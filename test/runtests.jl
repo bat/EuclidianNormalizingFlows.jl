@@ -3,5 +3,5 @@
 import Test
 
 Test.@testset "Package EuclidianNormalizingFlows" begin
-    include("test_hello_world.jl")
+    include("test_householder_trafo.jl")
 end # testset
