@@ -25,6 +25,7 @@ using SpecialFunctions
 using StatsBase
 using ValueShapes
 
+import Flux
 import ZygoteRules
 
 include("householder_trafo.jl")
