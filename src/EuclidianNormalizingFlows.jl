@@ -30,5 +30,6 @@ using ValueShapes
 import ZygoteRules
 
 include("householder_trafo.jl")
+include("center_stretch.jl")
 
 end # module
