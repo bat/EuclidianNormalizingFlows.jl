@@ -19,6 +19,7 @@ using ChainRulesCore
 using Distributions
 using ElasticArrays
 using ForwardDiffPullbacks
+using Functors
 using Optim
 using SpecialFunctions
 using StatsBase
