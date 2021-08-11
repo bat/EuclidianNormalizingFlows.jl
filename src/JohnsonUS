@@ -1,0 +1,38 @@
+struct JohnsonSU{T<:Real} <: Distributions.Distribution{Univariate,Continuous}
+    gamma::T #positive: left tail, negativ: right tail, 0: no tail
+    delta::T #height and width
+    xi::T #shift along the x-axis
+    lambda::T #height and width
+end
+
+#JohnsonSU(gamma::Real, delta::Real, xi::Real, lambda::Real) = JohnsonSU{Float64}(gamma, delta, xi, lambda)
+
+function JohnsonSU(; gamma::Real = 1., delta::Real = 1., xi::Real = 0., lambda::Real = 1.)
+    JohnsonSU(gamma, delta, xi, lambda)
+end
+
+Base.minimum(d::JohnsonSU) = -Inf
+Base.maximum(d::JohnsonSU) = +Inf
+
+StatsBase.params(d::JohnsonSU) = (d.gamma, d.delta, d.xi, d.lambda)
+@inline Distributions.partype(d::JohnsonSU{T}) where {T<:Real} = T
+
+Distributions.location(d::JohnsonSU) = mean(d)
+Distributions.scale(d::JohnsonSU) = var(d)
+
+Statistics.mean(d::JohnsonSU) = d.xi - d.lambda * exp(d.delta^(-2)/2)*sinh(d.gamma/d.delta)
+Statistics.median(d::JohnsonSU) = d.xi + d.lambda * sinh(-d.gamma/d.delta)
+Statistics.var(d::JohnsonSU) = (d.lambda^2)/2 * (exp(d.delta^(-2)) - 1) * (exp(d.delta^(-2))*cosh(2*d.gamma/d.delta) + 1)
+
+temp(d::JohnsonSU, x::Real) = (d.gamma + d.delta*asinh((x - d.xi)/d.lambda))
+
+#Distributions.pdf(d::JohnsonSU, x::Real) = (delta/(lambda * sqrt(2*pi))) * (1/(sqrt(1 + ((x - xi)/lambda)^2))) * exp(-1/2 * temp(x))
+Distributions.pdf(d::JohnsonSU, x::Real) = (d.delta/d.lambda) * (1/(sqrt(1 + ((x - d.xi)/d.lambda)^2))) * pdf(Normal(), temp(d,x)^2)
+Distributions.cdf(d::JohnsonSU, x::Real) = cdf(Normal(), temp(d,x))
+Distributions.logpdf(d::JohnsonSU, x::Real) = log((d.delta/d.lambda) * (1/(sqrt(1 + ((x - d.xi)/d.lambda)^2))) * pdf(Normal(), temp(d,x)^2))
+Distributions.logcdf(d::JohnsonSU, x::Real) = logcdf(Normal(), temp(d,x))
+Distributions.ccdf(d::JohnsonSU, x::Real) = 1 - Distributions.cdf(d, x)
+Distributions.logccdf(d::JohnsonSU, x::Real) = log(1 - Distributions.cdf(d, x))
+
+Statistics.quantile(d::JohnsonSU, x::Real) = d.lambda*sinh((quantile(Normal(),x) - d.gamma)/d.delta) + d.xi
+
