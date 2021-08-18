@@ -24,7 +24,7 @@ ZygoteRules = "700de1a5-db45-46bc-99cf-38207098b444"
 [compat]
 ArgCheck = "1, 2.0"
 ArraysOfArrays = "0.4, 0.5"
-ChainRulesCore = "0.9.44, 0.10"
+ChainRulesCore = "0.9.44, 0.10, 1"
 Distributions = "0.21.10, 0.22, 0.23, 0.24, 0.25"
 DocStringExtensions = "0.8"
 ElasticArrays = "1.2.3"
