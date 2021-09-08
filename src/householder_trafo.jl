@@ -64,12 +64,12 @@ function ChainRulesCore.rrule(::typeof(householder_trafo), v::AbstractVector{T},
     y = householder_trafo(v, x)
     function householder_trafo_pullback(ΔΩ)
         ∂v = InplaceableThunk(
-            @thunk(householder_trafo_pullback_v(v, x, unthunk(ΔΩ))),
-            ∂v -> householder_trafo_pbacc_v!(∂v, v, x, unthunk(ΔΩ))
+            ∂v -> householder_trafo_pbacc_v!(∂v, v, x, unthunk(ΔΩ)),
+            @thunk(householder_trafo_pullback_v(v, x, unthunk(ΔΩ)))
         )
         ∂x = InplaceableThunk(
-            @thunk(householder_trafo_pullback_x(v, x, unthunk(ΔΩ))),
-            ∂x -> householder_trafo_pbacc_x!(∂x, v, x, unthunk(ΔΩ))
+            ∂x -> householder_trafo_pbacc_x!(∂x, v, x, unthunk(ΔΩ)),
+            @thunk(householder_trafo_pullback_x(v, x, unthunk(ΔΩ)))
         )
         (NoTangent(), ∂v, ∂x)
     end
