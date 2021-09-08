@@ -5,7 +5,7 @@ using Test
 
 using ForwardDiff
 
-using EuclidianNormalizingFlows: center_stretch, center_contract, center_contract_ladj, CenterStretch, CenterContract
+using EuclidianNormalizingFlows: center_stretch, center_contract, center_contract_ladj, CenterStretch, CenterContract, WithLADJ
 
 
 @testset "center_stretch" begin
@@ -30,4 +30,14 @@ using EuclidianNormalizingFlows: center_stretch, center_contract, center_contrac
     @test @inferred(inv(inv(trafo))) === trafo
 
     @test @inferred(trafo(4.2)) == center_stretch(4.2, 4, 2, 3)
+
+    @test @inferred(CenterStretch([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])([4.2, 4.3], WithLADJ())) == (
+        center_stretch.([4.2, 4.3], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]),
+        sum(-center_contract_ladj.(center_stretch.([4.2, 4.3], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]), [4.0, 4.1], [2.0, 2.1], [3.0, 3.1])),
+    )
+
+    @test @inferred(CenterContract([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])([11.0, 11.5], WithLADJ())) == (
+        center_contract.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]),
+        sum(center_contract_ladj.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1])),
+    )
 end
