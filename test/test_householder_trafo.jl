@@ -6,7 +6,7 @@ using Test
 using LinearAlgebra
 using ForwardDiff, Zygote
 
-using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo
+using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, HouseholderTrafo, WithLADJ
 
 
 @testset "householder_trafo" begin
@@ -37,4 +37,6 @@ using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo
     @test Zygote.pullback(chained_householder_trafo, V, x)[1] == chained_householder_trafo(V, x)
     @test Zygote.jacobian(chained_householder_trafo, V, x)[1] ≈ ForwardDiff.jacobian(V -> chained_householder_trafo(V, x), V)
     @test Zygote.jacobian(chained_householder_trafo, V, x)[2] ≈ ForwardDiff.jacobian(x -> chained_householder_trafo(V, x), x)
+
+    @test @inferred(HouseholderTrafo(V)(x, WithLADJ())) == (chained_householder_trafo(V, x), 0)
 end

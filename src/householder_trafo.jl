@@ -131,3 +131,15 @@ function ChainRulesCore.rrule(::typeof(chained_householder_trafo), V::AbstractMa
     end
     return y, householder_trafo_pullback
 end
+
+
+@with_kw struct HouseholderTrafo{T<:AbstractVecOrMat{<:Real}} <:Function
+    V::T
+end
+
+@functor HouseholderTrafo
+
+(f::HouseholderTrafo{<:AbstractVector})(x::AbstractVector{<:Real}) = householder_trafo(f.V, x)
+(f::HouseholderTrafo{<:AbstractMatrix})(x::AbstractVector{<:Real}) = chained_householder_trafo(f.V, x)
+
+(f::HouseholderTrafo)(x::AbstractVecOrMat{<:Real}, ::WithLADJ) = (f(x), ZERO)
