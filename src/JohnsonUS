@@ -26,24 +26,23 @@ Statistics.median(d::JohnsonSU) = d.xi + d.lambda * sinh(-d.gamma/d.delta)
 Statistics.var(d::JohnsonSU) = (d.lambda^2)/2 * (exp(d.delta^(-2)) - 1) * (exp(d.delta^(-2))*cosh(2*d.gamma/d.delta) + 1)
 
 
-#Distributions.pdf(d::JohnsonSU, x::Real) = deriv_johnsontrafo(d,x) * 1/sqrt(2*pi) * exp(-0.5 * johnsontrafo(d,x)^2)
-Distributions.pdf(d::JohnsonSU, x::Real) = deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x))
-Distributions.cdf(d::JohnsonSU, x::Real) = cdf(Normal(), johnsontrafo(d,x))
-#Distributions.logpdf(d::JohnsonSU, x::Real) = log(deriv_johnsontrafo(d,x) * 1/sqrt(2*pi) * exp(-0.5 * johnsontrafo(d,x)^2))
-Distributions.logpdf(d::JohnsonSU, x::Real) = log(deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x)))
-Distributions.logcdf(d::JohnsonSU, x::Real) = logcdf(Normal(), johnsontrafo(d,x))
-Distributions.ccdf(d::JohnsonSU, x::Real) = 1 - Distributions.cdf(d, x)
-Distributions.logccdf(d::JohnsonSU, x::Real) = log(1 - Distributions.cdf(d, x))
+johnsontrafo(d::JohnsonSU, x::Real) = (d.gamma + d.delta*asinh((x - d.xi)/d.lambda))
+johnsontrafo_inv(d::JohnsonSU, x::Real) = d.lambda*sinh((x - d.gamma)/d.delta) + d.xi
+deriv_johnsontrafo(d::JohnsonSU, x::Real) = (d.delta/d.lambda) * (1/(sqrt(1 + ((x - d.xi)/d.lambda)^2)))
+deriv_johnsontrafo_inv(d::JohnsonSU, x::Real) = d.lambda*cosh((x - d.gamma)/d.delta)/d.delta
+johnsontrafo_ladj(d::JohnsonSU, x::Real) = log(abs(deriv_johnsontrafo(d::JohnsonSU, x::Real)))
+johnsontrafo_inv_ladj(d::JohnsonSU, x::Real) = log(abs(deriv_johnsontrafo_inv(d::JohnsonSU, x::Real)))
 
 
-Distributions.pdf(d::JohnsonSU, x::Real) = deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x)^2)
+Distributions.pdf(d::JohnsonSU, x::Real) = deriv_johnsontrafo(d,x) * 1/sqrt(2*pi) * exp(-0.5 * johnsontrafo(d,x)^2)
+#Distributions.pdf(d::JohnsonSU, x::Real) = deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x)^2)
 Distributions.cdf(d::JohnsonSU, x::Real) = cdf(Normal(), johnsontrafo(d,x))
-Distributions.logpdf(d::JohnsonSU, x::Real) = log(deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x)^2))
+Distributions.logpdf(d::JohnsonSU, x::Real) = log(deriv_johnsontrafo(d,x) * 1/sqrt(2*pi) * exp(-0.5 * johnsontrafo(d,x)^2))
+#Distributions.logpdf(d::JohnsonSU, x::Real) = log(deriv_johnsontrafo(d,x) * pdf(Normal(), johnsontrafo(d,x)^2))
 Distributions.logcdf(d::JohnsonSU, x::Real) = logcdf(Normal(), johnsontrafo(d,x))
 Distributions.ccdf(d::JohnsonSU, x::Real) = 1 - Distributions.cdf(d, x)
 Distributions.logccdf(d::JohnsonSU, x::Real) = log(1 - Distributions.cdf(d, x))
 
 
 Statistics.quantile(d::JohnsonSU, x::Real) = johnsontrafo_inv(d, quantile(Normal(),x))
-
 
