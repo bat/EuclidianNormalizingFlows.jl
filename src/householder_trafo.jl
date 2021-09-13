@@ -133,5 +133,5 @@ end
 (f::HouseholderTrafo{<:AbstractVector})(x::AbstractVecOrMat{<:Real}) = householder_trafo(f.V, x)
 (f::HouseholderTrafo{<:AbstractMatrix})(x::AbstractVecOrMat{<:Real}) = chained_householder_trafo(f.V, x)
 
-(f::HouseholderTrafo)(x::AbstractVector{<:Real}, ::WithLADJ) = (f(x), 0)
-(f::HouseholderTrafo)(x::AbstractMatrix{<:Real}, ::WithLADJ) = (f(x), fill(0, size(x, 2)))
+(f::HouseholderTrafo)(x::AbstractVector{T}, ::WithLADJ) where {T<:Real} = (f(x), zero(T))
+(f::HouseholderTrafo)(x::AbstractMatrix{T}, ::WithLADJ) where {T<:Real} = (f(x), similar_zeros(x, (size(x, 2),)))
