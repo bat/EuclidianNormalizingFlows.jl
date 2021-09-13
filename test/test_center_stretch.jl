@@ -40,4 +40,16 @@ using EuclidianNormalizingFlows: center_stretch, center_contract, center_contrac
         center_contract.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]),
         sum(center_contract_ladj.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1])),
     )
+
+    let
+        fwd = CenterStretch([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])
+        rev = inv(fwd)
+        X = randn(2, 3)
+        Y, ladjs = fwd(X, WithLADJ())
+        @test hcat((getindex).(fwd.(eachcol(X), WithLADJ()), 1)...) == Y
+        @test (getindex).(fwd.(eachcol(X), WithLADJ()), 2) == ladjs
+        X2, inv_ladjs = rev(Y, WithLADJ())
+        @test X2 ≈ X
+        @test inv_ladjs ≈ - ladjs
+    end
 end

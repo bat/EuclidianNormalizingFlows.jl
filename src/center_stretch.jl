@@ -24,7 +24,7 @@ function center_contract_ladj(x::T1, a::T2, b::T3, c::T4) where {T1<:Real,T2<:Re
 end
 
 
-@with_kw struct CenterStretch{T<:Union{Real,AbstractArray{<:Real}}} <: Function
+@with_kw struct CenterStretch{T<:Union{Real,AbstractVector{<:Real}}} <: Function
     a::T = 0.0
     b::T = 1.0
     c::T = 0.0
@@ -32,19 +32,19 @@ end
 
 @functor CenterStretch
 
-(f::CenterStretch)(x::Union{Real,AbstractArray{<:Real}}) = fwddiff(center_stretch).(x, f.a, f.b, f.c)
+(f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(center_stretch).(x, f.a, f.b, f.c)
 
-function (f::CenterStretch)(x::Union{Real,AbstractArray{<:Real}}, ::WithLADJ)
+function (f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
     neg_ladjs = fwddiff(center_contract_ladj).(y, f.a, f.b, f.c)
-    (y, - sum(neg_ladjs))
+    (y, - sum_ladjs(neg_ladjs))
 end
 
 Base.inv(f::CenterStretch) = CenterContract(f.a, f.b, f.c)
 
 
 
-@with_kw struct CenterContract{T<:Union{Real,AbstractArray{<:Real}}} <:Function
+@with_kw struct CenterContract{T<:Union{Real,AbstractVector{<:Real}}} <:Function
     a::T = 0.0
     b::T = 1.0
     c::T = 0.0
@@ -52,12 +52,12 @@ end
 
 @functor CenterContract
 
-(f::CenterContract)(x::Union{Real,AbstractArray{<:Real}}) = fwddiff(center_contract).(x, f.a, f.b, f.c)
+(f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(center_contract).(x, f.a, f.b, f.c)
 
-function (f::CenterContract)(x::Union{Real,AbstractArray{<:Real}}, ::WithLADJ)
+function (f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
-    ladjs = center_contract_ladj.(x, f.a, f.b, f.c)
-    (y, sum(ladjs))
+    ladjs = fwddiff(center_contract_ladj).(x, f.a, f.b, f.c)
+    (y, sum_ladjs(ladjs))
 end
 
 Base.inv(f::CenterContract) = CenterStretch(f.a, f.b, f.c)
