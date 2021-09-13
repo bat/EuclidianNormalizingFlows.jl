@@ -44,4 +44,16 @@ using EuclidianNormalizingFlows: JohnsonSU, JohnsonTrafo, JohnsonTrafoInv, johns
         johnsontrafo_inv.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1]),
         sum(johnsontrafo_inv_ladj.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1])),
     )
+
+    let
+        fwd = JohnsonTrafo([10.0, 11.0], [3.5, 3.6], [10.0, 11.0], [1.0, 1.1])
+        rev = inv(fwd)
+        X = randn(2, 3)
+        Y, ladjs = fwd(X, WithLADJ())
+        @test hcat((getindex).(fwd.(eachcol(X), WithLADJ()), 1)...) == Y
+        @test (getindex).(fwd.(eachcol(X), WithLADJ()), 2) == ladjs
+        X2, inv_ladjs = rev(Y, WithLADJ())
+        @test X2 ≈ X
+        @test inv_ladjs ≈ - ladjs
+    end
 end
