@@ -32,11 +32,11 @@ end
 
 @functor CenterStretch
 
-(f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(center_stretch).(x, f.a, f.b, f.c)
+(f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}) = center_stretch.(x, f.a, f.b, f.c)
 
 function (f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
-    neg_ladjs = fwddiff(center_contract_ladj).(y, f.a, f.b, f.c)
+    neg_ladjs = center_contract_ladj.(y, f.a, f.b, f.c)
     (y, - sum_ladjs(neg_ladjs))
 end
 
@@ -52,11 +52,11 @@ end
 
 @functor CenterContract
 
-(f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(center_contract).(x, f.a, f.b, f.c)
+(f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}) = center_contract.(x, f.a, f.b, f.c)
 
 function (f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
-    ladjs = fwddiff(center_contract_ladj).(x, f.a, f.b, f.c)
+    ladjs = center_contract_ladj.(x, f.a, f.b, f.c)
     (y, sum_ladjs(ladjs))
 end
 

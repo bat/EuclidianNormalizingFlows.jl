@@ -65,11 +65,11 @@ end
 
 @functor JohnsonTrafo
 
-(f::JohnsonTrafo)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(johnsontrafo).(x, f.gamma, f.delta, f.xi, f.lambda)
+(f::JohnsonTrafo)(x::Union{Real,AbstractVecOrMat{<:Real}}) = johnsontrafo.(x, f.gamma, f.delta, f.xi, f.lambda)
 
 function (f::JohnsonTrafo)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
-    ladjs = fwddiff(johnsontrafo_ladj).(x, f.gamma, f.delta, f.xi, f.lambda)
+    ladjs = johnsontrafo_ladj.(x, f.gamma, f.delta, f.xi, f.lambda)
     (y, sum_ladjs(ladjs))
 end
 
@@ -84,11 +84,11 @@ end
 
 @functor JohnsonTrafoInv
 
-(f::JohnsonTrafoInv)(x::Union{Real,AbstractVecOrMat{<:Real}}) = fwddiff(johnsontrafo_inv).(x, f.gamma, f.delta, f.xi, f.lambda)
+(f::JohnsonTrafoInv)(x::Union{Real,AbstractVecOrMat{<:Real}}) = johnsontrafo_inv.(x, f.gamma, f.delta, f.xi, f.lambda)
 
 function (f::JohnsonTrafoInv)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
     y = f(x)
-    neg_ladjs = fwddiff(johnsontrafo_ladj).(y, f.gamma, f.delta, f.xi, f.lambda)
+    neg_ladjs = johnsontrafo_ladj.(y, f.gamma, f.delta, f.xi, f.lambda)
     (y, - sum_ladjs(neg_ladjs))
 end
 
