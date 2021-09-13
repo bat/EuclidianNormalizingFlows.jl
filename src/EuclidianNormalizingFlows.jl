@@ -32,5 +32,6 @@ import ZygoteRules
 include("abstract_trafo.jl")
 include("householder_trafo.jl")
 include("center_stretch.jl")
+include("johnson_trafo.jl")
 
 end # module

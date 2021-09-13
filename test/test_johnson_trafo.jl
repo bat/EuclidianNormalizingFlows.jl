@@ -1,7 +1,7 @@
 using EuclidianNormalizingFlows
 using Test
 
-using ForwardDiff
+using Distributions, ForwardDiff
 
 using EuclidianNormalizingFlows: JohnsonSU, JohnsonTrafo, JohnsonTrafoInv, johnsontrafo, johnsontrafo_inv, johnsontrafo_ladj, johnsontrafo_inv_ladj
 
@@ -11,7 +11,7 @@ using EuclidianNormalizingFlows: JohnsonSU, JohnsonTrafo, JohnsonTrafoInv, johns
     K_joh = johnsontrafo_inv.(K, -15,6.5,0,2.5);
     X = rand(JohnsonSU(-15,6.5,0,2.5), 10^6);
 
-    @test isapprox(@inferredsum(sum(abs.(sort(K_joh)))/10^6, sum(abs.(sort(X)))/10^6, rtol = 0.01))
+    @test isapprox(sum(abs.(sort(K_joh)))/10^6, sum(abs.(sort(X)))/10^6, rtol = 0.01)
     
     @test @inferred(johnsontrafo(0.5, 1, 2, 3, 4)) isa Float64
     @test @inferred(johnsontrafo_inv(0.5, 1, 2, 3, 4)) isa Float64
