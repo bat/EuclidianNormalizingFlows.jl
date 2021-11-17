@@ -141,4 +141,4 @@ inverse(f::HouseholderTrafo{<:AbstractMatrix}) = HouseholderTrafo(reverse(f.V, d
 (f::HouseholderTrafo{<:AbstractMatrix})(x::AbstractVecOrMat{<:Real}) = chained_householder_trafo(f.V, x)
 
 with_logabsdet_jacobian(f::HouseholderTrafo, x::AbstractVector{T}) where {T<:Real} = (f(x), zero(T))
-with_logabsdet_jacobian(f::HouseholderTrafo, x::AbstractMatrix{T}) where {T<:Real} = (f(x), similar_zeros(x, (size(x, 2),)))
+with_logabsdet_jacobian(f::HouseholderTrafo, x::AbstractMatrix{T}) where {T<:Real} = (f(x), similar_zeros(x, (size(x, 2),))')

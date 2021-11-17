@@ -6,7 +6,7 @@ const ZERO = false
 
 sum_ladjs(ladjs::Real) = ladjs
 sum_ladjs(ladjs::AbstractVector{<:Real}) = sum(ladjs)
-sum_ladjs(ladjs::AbstractMatrix{<:Real}) = vec(sum(ladjs, dims = 1))
+sum_ladjs(ladjs::AbstractMatrix{<:Real}) = vec(sum(ladjs, dims = 1))'
 
 
 function similar_zeros(x::AbstractMatrix{<:Number}, sz::Dims)
