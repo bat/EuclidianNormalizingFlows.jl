@@ -4,14 +4,19 @@
 std_normal_logpdf(x::Real) = -(abs2(x) + log2π)/2
 
 
-function mvnormal_ll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
-    Y = trafo(X)
-    sum(std_normal_logpdf.(Y))
+function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
+    Y, ladj = with_logabsdet_jacobian(trafo, X)
+    #ll = sum(sum(std_normal_logpdf.(Y), dims = 1) .+ ladj)
+    # Faster:
+    inv_ndims = inv(size(Y, 1))
+    ll = sum(std_normal_logpdf.(Y) .+ inv_ndims .* ladj)
+    # Need to maximize likelihood:
+    return -ll
 end
 
 
-function mvnormal_ll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
-    ll, back = Zygote.pullback(mvnormal_ll_trafo, trafo, X)
+function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
+    ll, back = Zygote.pullback(mvnormal_negll_trafo, trafo, X)
     d_trafo = back(one(eltype(X)))[1]
     return ll, d_trafo
 end
@@ -23,16 +28,16 @@ function optimize_whitening(
     optstate = Optimisers.state(optimizer, deepcopy(initial_trafo)),
     ll_history = Vector{Float64}()
 )
-    batches = collect(Iterators.partition(smpls, nbatches))
-    trafo::typeof(initial_trafo) = deepcopy(initial_trafo)
-    state::typeof(optstate) = deepcopy(optstate)
+    batchsize = round(Int, length(smpls) / nbatches)
+    batches = collect(Iterators.partition(smpls, batchsize))
+    trafo = deepcopy(initial_trafo)
+    state = deepcopy(optstate)
     ll_hist = Vector{Float64}()
     for i in 1:nepochs
         for batch in batches
             X = flatview(batch)
-            ll, d_trafo = mvnormal_ll_trafograd(trafo, X)
-            neg_d_trafo = fmap(x -> -x, d_trafo) # Need to maximize likelihood
-            state, trafo = Optimisers.update(optimizer, state, trafo, neg_d_trafo)
+            ll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            state, trafo = Optimisers.update(optimizer, state, trafo, d_trafo)
             push!(ll_hist, ll)
         end
     end
