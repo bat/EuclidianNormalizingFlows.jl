@@ -3,9 +3,10 @@
 using EuclidianNormalizingFlows
 using Test
 
+using InverseFunctions, ChangesOfVariables
 using ForwardDiff
 
-using EuclidianNormalizingFlows: center_stretch, center_contract, center_contract_ladj, CenterStretch, CenterContract, WithLADJ
+using EuclidianNormalizingFlows: center_stretch, center_contract, center_contract_ladj, CenterStretch, CenterContract
 
 
 @testset "center_stretch" begin
@@ -26,29 +27,37 @@ using EuclidianNormalizingFlows: center_stretch, center_contract, center_contrac
 
     @inferred(CenterStretch(4, 2, 3)) isa CenterStretch
     trafo = CenterStretch(4, 2, 3)
-    @test @inferred(inv(trafo)) isa CenterContract
-    @test @inferred(inv(inv(trafo))) === trafo
 
     @test @inferred(trafo(4.2)) == center_stretch(4.2, 4, 2, 3)
 
-    @test @inferred(CenterStretch([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])([4.2, 4.3], WithLADJ())) == (
+    @test @inferred(with_logabsdet_jacobian(CenterStretch([4.0, 4.1], [2.0, 2.1], [3.0, 3.1]), [4.2, 4.3])) == (
         center_stretch.([4.2, 4.3], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]),
         sum(-center_contract_ladj.(center_stretch.([4.2, 4.3], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]), [4.0, 4.1], [2.0, 2.1], [3.0, 3.1])),
     )
 
-    @test @inferred(CenterContract([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])([11.0, 11.5], WithLADJ())) == (
+    @test @inferred(with_logabsdet_jacobian(CenterContract([4.0, 4.1], [2.0, 2.1], [3.0, 3.1]), [11.0, 11.5])) == (
         center_contract.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1]),
         sum(center_contract_ladj.([11.0, 11.5], [4.0, 4.1], [2.0, 2.1], [3.0, 3.1])),
     )
 
     let
         fwd = CenterStretch([4.0, 4.1], [2.0, 2.1], [3.0, 3.1])
-        rev = inv(fwd)
+        @test fwd == deepcopy(fwd)
+        @test isequal(fwd, deepcopy(fwd))
+        @test hash(fwd) == hash(deepcopy(fwd))
+    
+        rev = inverse(fwd)
+        @test rev == deepcopy(rev)
+        @test isequal(rev, deepcopy(rev))
+        @test hash(rev) == hash(deepcopy(rev))
+
         X = randn(2, 3)
-        Y, ladjs = fwd(X, WithLADJ())
-        @test hcat((getindex).(fwd.(eachcol(X), WithLADJ()), 1)...) == Y
-        @test (getindex).(fwd.(eachcol(X), WithLADJ()), 2) == ladjs
-        X2, inv_ladjs = rev(Y, WithLADJ())
+        InverseFunctions.test_inverse(fwd, X)
+
+        Y, ladjs = with_logabsdet_jacobian(fwd, X)
+        @test hcat((getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 1)...) == Y
+        @test (getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 2) == ladjs
+        X2, inv_ladjs = with_logabsdet_jacobian(rev, Y)
         @test X2 ≈ X
         @test inv_ladjs ≈ - ladjs
     end

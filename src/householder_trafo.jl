@@ -53,7 +53,7 @@ function householder_trafo_pullback_x(v, x, ΔΩ)
     householder_trafo_pbacc_x!(∂x, v, x, ΔΩ)
 end
 
-function ChainRulesCore.rrule(::typeof(householder_trafo), v::AbstractVector{T}, x::AbstractVecOrMat{U}) where {T<:Real,U<:Real}
+function rrule(::typeof(householder_trafo), v::AbstractVector{T}, x::AbstractVecOrMat{U}) where {T<:Real,U<:Real}
     y = householder_trafo(v, x)
     function householder_trafo_pullback(ΔΩ)
         ∂v = @thunk(householder_trafo_pullback_v(v, x, unthunk(ΔΩ)))
@@ -113,7 +113,7 @@ function chained_householder_trafo_pullback_x(V, x, y, ΔΩ)
     return ∂x
 end
 
-function ChainRulesCore.rrule(::typeof(chained_householder_trafo), V::AbstractMatrix{T}, x::AbstractVecOrMat{U}) where {T<:Real,U<:Real}
+function rrule(::typeof(chained_householder_trafo), V::AbstractMatrix{T}, x::AbstractVecOrMat{U}) where {T<:Real,U<:Real}
     y = chained_householder_trafo(V, x)
     function householder_trafo_pullback(ΔΩ)
         ∂V = @thunk(chained_householder_trafo_pullback_V(V, x, y, unthunk(ΔΩ)))
@@ -130,8 +130,15 @@ end
 
 @functor HouseholderTrafo
 
+Base.:(==)(a::HouseholderTrafo, b::HouseholderTrafo) = a.V == b.V
+Base.isequal(a::HouseholderTrafo, b::HouseholderTrafo) = isequal(a.V, b.V)
+Base.hash(x::HouseholderTrafo, h::UInt) = hash(x.V, hash(:HouseholderTrafo, hash(:EuclidianNormalizingFlows, h)))
+
+inverse(f::HouseholderTrafo{<:AbstractVector}) = f
+inverse(f::HouseholderTrafo{<:AbstractMatrix}) = HouseholderTrafo(reverse(f.V, dims = 2))
+
 (f::HouseholderTrafo{<:AbstractVector})(x::AbstractVecOrMat{<:Real}) = householder_trafo(f.V, x)
 (f::HouseholderTrafo{<:AbstractMatrix})(x::AbstractVecOrMat{<:Real}) = chained_householder_trafo(f.V, x)
 
-(f::HouseholderTrafo)(x::AbstractVector{T}, ::WithLADJ) where {T<:Real} = (f(x), zero(T))
-(f::HouseholderTrafo)(x::AbstractMatrix{T}, ::WithLADJ) where {T<:Real} = (f(x), similar_zeros(x, (size(x, 2),)))
+with_logabsdet_jacobian(f::HouseholderTrafo, x::AbstractVector{T}) where {T<:Real} = (f(x), zero(T))
+with_logabsdet_jacobian(f::HouseholderTrafo, x::AbstractMatrix{T}) where {T<:Real} = (f(x), similar_zeros(x, (size(x, 2),)))

@@ -56,6 +56,8 @@ function johnsontrafo_inv_ladj(x::T1, gamma::T2, delta::T3, xi::T4, lambda::T5) 
     convert(R, log(abs(deriv_johnsontrafo_inv(x,gamma,delta,xi,lambda))))
 end
 
+
+
 @with_kw struct JohnsonTrafo{T<:Union{Real,AbstractVector{<:Real}}} <: Function
     gamma::T = 10.0
     delta::T = 3.5
@@ -63,17 +65,23 @@ end
     lambda::T = 1.0
 end
 
+Base.:(==)(a::JohnsonTrafo, b::JohnsonTrafo) = a.gamma == b.gamma && a.delta == b.delta && a.xi == b.xi && a.lambda == b.lambda
+Base.isequal(a::JohnsonTrafo, b::JohnsonTrafo) = isequal(a.gamma, b.gamma) && isequal(a.delta, b.delta) && isequal(a.xi, b.xi) && isequal(a.lambda, b.lambda)
+Base.hash(x::JohnsonTrafo, h::UInt) = hash(x.lambda, hash(x.xi, hash(x.delta, hash(x.gamma, hash(:JohnsonTrafo, hash(:EuclidianNormalizingFlows, h))))))
+
 @functor JohnsonTrafo
 
 (f::JohnsonTrafo)(x::Union{Real,AbstractVecOrMat{<:Real}}) = johnsontrafo.(x, f.gamma, f.delta, f.xi, f.lambda)
 
-function (f::JohnsonTrafo)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
+function with_logabsdet_jacobian(f::JohnsonTrafo, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
     ladjs = johnsontrafo_ladj.(x, f.gamma, f.delta, f.xi, f.lambda)
     (y, sum_ladjs(ladjs))
 end
 
-Base.inv(f::JohnsonTrafo) = JohnsonTrafoInv(f.gamma, f.delta, f.xi, f.lambda)
+inverse(f::JohnsonTrafo) = JohnsonTrafoInv(f.gamma, f.delta, f.xi, f.lambda)
+
+
 
 @with_kw struct JohnsonTrafoInv{T<:Union{Real,AbstractVector{<:Real}}} <: Function
     gamma::T = 10.0
@@ -84,15 +92,21 @@ end
 
 @functor JohnsonTrafoInv
 
+Base.:(==)(a::JohnsonTrafoInv, b::JohnsonTrafoInv) = a.gamma == b.gamma && a.delta == b.delta && a.xi == b.xi && a.lambda == b.lambda
+Base.isequal(a::JohnsonTrafoInv, b::JohnsonTrafoInv) = isequal(a.gamma, b.gamma) && isequal(a.delta, b.delta) && isequal(a.xi, b.xi) && isequal(a.lambda, b.lambda)
+Base.hash(x::JohnsonTrafoInv, h::UInt) = hash(x.lambda, hash(x.xi, hash(x.delta, hash(x.gamma, hash(:JohnsonTrafoInv, hash(:EuclidianNormalizingFlows, h))))))
+
 (f::JohnsonTrafoInv)(x::Union{Real,AbstractVecOrMat{<:Real}}) = johnsontrafo_inv.(x, f.gamma, f.delta, f.xi, f.lambda)
 
-function (f::JohnsonTrafoInv)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
+function with_logabsdet_jacobian(f::JohnsonTrafoInv, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
     neg_ladjs = johnsontrafo_ladj.(y, f.gamma, f.delta, f.xi, f.lambda)
     (y, - sum_ladjs(neg_ladjs))
 end
 
-Base.inv(f::JohnsonTrafoInv) = JohnsonTrafo(f.gamma, f.delta, f.xi, f.lambda)
+inverse(f::JohnsonTrafoInv) = JohnsonTrafo(f.gamma, f.delta, f.xi, f.lambda)
+
+
 
 #johnsontrafo(d::JohnsonSU, x::Real) = (d.gamma + d.delta*asinh((x - d.xi)/d.lambda))
 #johnsontrafo_inv(d::JohnsonSU, x::Real) = d.lambda*sinh((x - d.gamma)/d.delta) + d.xi
@@ -113,4 +127,3 @@ Distributions.logccdf(d::JohnsonSU, x::Real) = log(1 - Distributions.cdf(d, x))
 
 
 Statistics.quantile(d::JohnsonSU, x::Real) = johnsontrafo_inv(quantile(Normal(),x), d.gamma, d.delta, d.xi, d.lambda)
-

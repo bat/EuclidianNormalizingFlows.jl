@@ -1,7 +1,9 @@
 using EuclidianNormalizingFlows
 using Test
 
-using Distributions, ForwardDiff
+using Distributions
+using InverseFunctions, ChangesOfVariables
+using ForwardDiff
 
 using EuclidianNormalizingFlows: JohnsonSU, JohnsonTrafo, JohnsonTrafoInv, johnsontrafo, johnsontrafo_inv, johnsontrafo_ladj, johnsontrafo_inv_ladj
 
@@ -30,29 +32,39 @@ using EuclidianNormalizingFlows: JohnsonSU, JohnsonTrafo, JohnsonTrafoInv, johns
     
     @test @inferred(JohnsonTrafo(4, 2, 3, 1)) isa JohnsonTrafo
     trafo = JohnsonTrafo(4, 2, 3, 1)
-    @test @inferred(inv(trafo)) isa JohnsonTrafoInv
-    @test @inferred(inv(inv(trafo))) === trafo
+    @test @inferred(inverse(trafo)) isa JohnsonTrafoInv
+    @test @inferred(inverse(inverse(trafo))) === trafo
     
     @test @inferred(trafo(4.2)) == johnsontrafo(4.2, 4, 2, 3, 1)
     
-    @test @inferred(JohnsonTrafo([4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1])([0.5, 0.6], WithLADJ())) == (
+    @test @inferred(with_logabsdet_jacobian(JohnsonTrafo([4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1]), [0.5, 0.6])) == (
         johnsontrafo.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1]),
         sum(johnsontrafo_ladj.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1])),
     )
     
-    @test @inferred(JohnsonTrafoInv([4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1])([0.5, 0.6], WithLADJ())) == (
+    @test @inferred(with_logabsdet_jacobian(JohnsonTrafoInv([4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1]), [0.5, 0.6])) == (
         johnsontrafo_inv.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1]),
         sum(johnsontrafo_inv_ladj.([0.5, 0.6], [4.0, 4.1], [3.0, 3.1], [2.0, 2.1], [1.0, 1.1])),
     )
 
     let
         fwd = JohnsonTrafo([10.0, 11.0], [3.5, 3.6], [10.0, 11.0], [1.0, 1.1])
-        rev = inv(fwd)
+        @test fwd == deepcopy(fwd)
+        @test isequal(fwd, deepcopy(fwd))
+        @test hash(fwd) == hash(deepcopy(fwd))
+
+        rev = inverse(fwd)
+        @test rev == deepcopy(rev)
+        @test isequal(rev, deepcopy(rev))
+        @test hash(rev) == hash(deepcopy(rev))
+
         X = randn(2, 3)
-        Y, ladjs = fwd(X, WithLADJ())
-        @test hcat((getindex).(fwd.(eachcol(X), WithLADJ()), 1)...) == Y
-        @test (getindex).(fwd.(eachcol(X), WithLADJ()), 2) == ladjs
-        X2, inv_ladjs = rev(Y, WithLADJ())
+        InverseFunctions.test_inverse(fwd, X)
+
+        Y, ladjs = with_logabsdet_jacobian(fwd, X)
+        @test hcat((getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 1)...) == Y
+        @test (getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 2) == ladjs
+        X2, inv_ladjs = with_logabsdet_jacobian(rev, Y)
         @test X2 ≈ X
         @test inv_ladjs ≈ - ladjs
     end

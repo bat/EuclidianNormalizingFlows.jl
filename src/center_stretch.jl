@@ -32,15 +32,19 @@ end
 
 @functor CenterStretch
 
+Base.:(==)(a::CenterStretch, b::CenterStretch) = a.a == b.a && a.b == b.b && a.c == b.c
+Base.isequal(a::CenterStretch, b::CenterStretch) = isequal(a.a, b.a) && isequal(a.b, b.b) && isequal(a.c, b.c)
+Base.hash(x::CenterStretch, h::UInt) = hash(x.c, hash(x.b, hash(x.a, hash(:CenterStretch, hash(:EuclidianNormalizingFlows, h)))))
+
 (f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}) = center_stretch.(x, f.a, f.b, f.c)
 
-function (f::CenterStretch)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
+function with_logabsdet_jacobian(f::CenterStretch, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
     neg_ladjs = center_contract_ladj.(y, f.a, f.b, f.c)
     (y, - sum_ladjs(neg_ladjs))
 end
 
-Base.inv(f::CenterStretch) = CenterContract(f.a, f.b, f.c)
+inverse(f::CenterStretch) = CenterContract(f.a, f.b, f.c)
 
 
 
@@ -52,12 +56,16 @@ end
 
 @functor CenterContract
 
+Base.:(==)(a::CenterContract, b::CenterContract) = a.a == b.a && a.b == b.b && a.c == b.c
+Base.isequal(a::CenterContract, b::CenterContract) = isequal(a.a, b.a) && isequal(a.b, b.b) && isequal(a.c, b.c)
+Base.hash(x::CenterContract, h::UInt) = hash(x.c, hash(x.b, hash(x.a, hash(:CenterContract, hash(:EuclidianNormalizingFlows, h)))))
+
 (f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}) = center_contract.(x, f.a, f.b, f.c)
 
-function (f::CenterContract)(x::Union{Real,AbstractVecOrMat{<:Real}}, ::WithLADJ)
+function with_logabsdet_jacobian(f::CenterContract, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
     ladjs = center_contract_ladj.(x, f.a, f.b, f.c)
     (y, sum_ladjs(ladjs))
 end
 
-Base.inv(f::CenterContract) = CenterStretch(f.a, f.b, f.c)
+inverse(f::CenterContract) = CenterStretch(f.a, f.b, f.c)

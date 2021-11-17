@@ -16,11 +16,13 @@ using Statistics
 using ArgCheck
 using ArraysOfArrays
 using ChainRulesCore
+using ChangesOfVariables
 using Distributions
 using DocStringExtensions
 using ElasticArrays
 using ForwardDiffPullbacks
 using Functors
+using InverseFunctions
 using Optim
 using Optimisers
 using Parameters
@@ -32,6 +34,10 @@ import Zygote
 import ZygoteRules
 
 using Distributions: log2π
+
+import InverseFunctions.inverse
+import ChainRulesCore.rrule
+import ChangesOfVariables.with_logabsdet_jacobian
 
 
 include("abstract_trafo.jl")

@@ -4,9 +4,10 @@ using EuclidianNormalizingFlows
 using Test
 
 using LinearAlgebra
+using InverseFunctions, ChangesOfVariables
 using ForwardDiff, Zygote
 
-using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, HouseholderTrafo, WithLADJ
+using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, HouseholderTrafo
 
 
 @testset "householder_trafo" begin
@@ -15,7 +16,7 @@ using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, H
     X = rand(5, 3)
     
     householder_matrix(v::AbstractVector{<:Real}) = I - 2 * (v*v') / (v'*v)
-    
+
     @test @inferred(householder_trafo(v, x)) ≈ householder_matrix(v) * x
     @test @inferred(householder_trafo(v, householder_trafo(v, x))) ≈ x
 
@@ -33,7 +34,7 @@ using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, H
 
     
     V = rand(5, 3)
-    
+
     chained_householder_matrix(v::AbstractMatrix{<:Real}) = *(reverse(householder_matrix.(eachcol(V)))...)
     
     @test chained_householder_trafo(V, x) ≈ *(reverse(householder_matrix.(eachcol(V)))...) * x
@@ -53,6 +54,14 @@ using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, H
     @test Zygote.jacobian(chained_householder_trafo, V, X)[1] ≈ ForwardDiff.jacobian(V -> chained_householder_trafo(V, X), V)
     @test Zygote.jacobian(chained_householder_trafo, V, X)[2] ≈ ForwardDiff.jacobian(X -> chained_householder_trafo(V, X), X)
 
-    @test @inferred(HouseholderTrafo(V)(x, WithLADJ())) == (chained_householder_trafo(V, x), 0)
-    @test @inferred(HouseholderTrafo(V)(X, WithLADJ())) == (chained_householder_trafo(V, X), fill(0, size(X, 2)))
+    @test HouseholderTrafo(V) == HouseholderTrafo(V)
+    @test isequal(HouseholderTrafo(V), HouseholderTrafo(V))
+    @test hash(HouseholderTrafo(V)) == hash(HouseholderTrafo(V))
+
+    for arg in (x, X)
+        InverseFunctions.test_inverse(HouseholderTrafo(V), arg)
+    end
+
+    @test @inferred(with_logabsdet_jacobian(HouseholderTrafo(V), x)) == (chained_householder_trafo(V, x), 0)
+    @test @inferred(with_logabsdet_jacobian(HouseholderTrafo(V), X)) == (chained_householder_trafo(V, X), fill(0, size(X, 2)))
 end
