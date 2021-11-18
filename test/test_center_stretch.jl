@@ -46,14 +46,22 @@ using EuclidianNormalizingFlows: center_stretch, center_contract, center_contrac
         @test isequal(fwd, deepcopy(fwd))
         @test hash(fwd) == hash(deepcopy(fwd))
     
+        InverseFunctions.test_inverse(fwd, [2, 3])
+        InverseFunctions.test_inverse(fwd, [-2,3])
+        ChangesOfVariables.test_with_logabsdet_jacobian(fwd, [2, 3], ForwardDiff.jacobian)
+        ChangesOfVariables.test_with_logabsdet_jacobian(fwd, [-2, -3], ForwardDiff.jacobian)
+
         rev = inverse(fwd)
         @test rev == deepcopy(rev)
         @test isequal(rev, deepcopy(rev))
         @test hash(rev) == hash(deepcopy(rev))
 
-        X = randn(2, 3)
-        InverseFunctions.test_inverse(fwd, X)
+        InverseFunctions.test_inverse(rev, [2, 3])
+        InverseFunctions.test_inverse(rev, [-2,3])
+        ChangesOfVariables.test_with_logabsdet_jacobian(rev, [8, 10], ForwardDiff.jacobian)
+        ChangesOfVariables.test_with_logabsdet_jacobian(rev, [-3, -4], ForwardDiff.jacobian)
 
+        X = randn(2, 3)
         Y, ladjs = with_logabsdet_jacobian(fwd, X)
         @test hcat((getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 1)...) == Y
         @test (getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 2) == ladjs'

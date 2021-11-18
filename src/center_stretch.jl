@@ -17,9 +17,7 @@ end
 function center_contract_ladj(x::T1, a::T2, b::T3, c::T4) where {T1<:Real,T2<:Real,T3<:Real,T4<:Real}
     R = float(promote_type(T1, T2, T3, T4))
     x_unshifted = x - c
-    exp_b_x_minus_a = exp(b * (x_unshifted - a))
-    exp_neg_b_x_plus_x = exp(-b * (x + a))
-    dy_dx = 1/(1 + exp(-b * (x_unshifted - a))) + 1/(1 + exp(b * (x + a)))
+    dy_dx = 1/(1 + exp(-b * (x_unshifted - a))) + 1/(1 + exp(b * (x_unshifted + a)))
     log(abs(dy_dx))
 end
 
