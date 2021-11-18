@@ -56,7 +56,7 @@ using EuclidianNormalizingFlows: center_stretch, center_contract, center_contrac
 
         Y, ladjs = with_logabsdet_jacobian(fwd, X)
         @test hcat((getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 1)...) == Y
-        @test (getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 2) == ladjs
+        @test (getindex).(with_logabsdet_jacobian.(fwd, eachcol(X)), 2) == ladjs'
         X2, inv_ladjs = with_logabsdet_jacobian(rev, Y)
         @test X2 ≈ X
         @test inv_ladjs ≈ - ladjs

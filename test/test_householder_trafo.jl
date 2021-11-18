@@ -63,5 +63,5 @@ using EuclidianNormalizingFlows: householder_trafo, chained_householder_trafo, H
     end
 
     @test @inferred(with_logabsdet_jacobian(HouseholderTrafo(V), x)) == (chained_householder_trafo(V, x), 0)
-    @test @inferred(with_logabsdet_jacobian(HouseholderTrafo(V), X)) == (chained_householder_trafo(V, X), fill(0, size(X, 2)))
+    @test @inferred(with_logabsdet_jacobian(HouseholderTrafo(V), X)) == (chained_householder_trafo(V, X), fill(0, size(X, 2))')
 end
