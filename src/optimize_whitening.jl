@@ -5,12 +5,12 @@ std_normal_logpdf(x::Real) = -(abs2(x) + log2π)/2
 
 
 function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
+    nsamples = size(X, 2) # normalize by number of samples to be independent of batch size:
     Y, ladj = with_logabsdet_jacobian(trafo, X)
-    #ll = sum(sum(std_normal_logpdf.(Y), dims = 1) .+ ladj)
+    #ref_ll = sum(sum(std_normal_logpdf.(Y), dims = 1) .+ ladj) / nsamples
     # Faster:
-    inv_ndims = inv(size(Y, 1))
-    ll = sum(std_normal_logpdf.(Y) .+ inv_ndims .* ladj)
-    # Need to maximize likelihood:
+    ll = (sum(std_normal_logpdf.(Y)) + sum(ladj)) / nsamples
+    #@assert ref_ll ≈ ll
     return -ll
 end
 
