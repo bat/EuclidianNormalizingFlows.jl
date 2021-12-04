@@ -16,9 +16,9 @@ end
 
 
 function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
-    ll, back = Zygote.pullback(mvnormal_negll_trafo, trafo, X)
+    negll, back = Zygote.pullback(mvnormal_negll_trafo, trafo, X)
     d_trafo = back(one(eltype(X)))[1]
-    return ll, d_trafo
+    return negll, d_trafo
 end
 
 
@@ -26,21 +26,21 @@ function optimize_whitening(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
     optstate = Optimisers.state(optimizer, deepcopy(initial_trafo)),
-    ll_history = Vector{Float64}()
+    negll_history = Vector{Float64}()
 )
     batchsize = round(Int, length(smpls) / nbatches)
     batches = collect(Iterators.partition(smpls, batchsize))
     trafo = deepcopy(initial_trafo)
     state = deepcopy(optstate)
-    ll_hist = Vector{Float64}()
+    negll_hist = Vector{Float64}()
     for i in 1:nepochs
         for batch in batches
             X = flatview(batch)
-            ll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(optimizer, state, trafo, d_trafo)
-            push!(ll_hist, ll)
+            push!(negll_hist, negll)
         end
     end
-    (result = trafo, optimizer_state = state, ll_history = vcat(ll_history, ll_hist))
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
 export optimize_trafo
