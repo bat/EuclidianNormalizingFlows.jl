@@ -43,6 +43,7 @@ import ChangesOfVariables.with_logabsdet_jacobian
 include("abstract_trafo.jl")
 include("optimize_whitening.jl")
 include("householder_trafo.jl")
+include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
 
