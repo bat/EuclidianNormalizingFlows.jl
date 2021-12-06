@@ -128,7 +128,23 @@ end
     V::T
 end
 
-@functor HouseholderTrafo
+
+# ToDo: Normalize in HouseholderTrafo as well?
+
+_ht_normalize(V::AbstractVector{<:Real}) = normalize(V)
+function _ht_normalize(V::AbstractMatrix{<:Real})
+    V_norm = deepcopy(V)
+    normalize!.(eachcol(V_norm))
+    V_norm
+end
+
+function Base.convert(::Type{HouseholderTrafo}, nt::NamedTuple{(:V,),<:Tuple{AbstractVecOrMat{<:Real}}})
+    HouseholderTrafo(_ht_normalize(nt.V))
+end
+Base.convert(::Type{NamedTuple}, x::HouseholderTrafo) = (V = x.V,)
+
+Functors.functor(::Type{<:HouseholderTrafo}, x) = convert(NamedTuple, x), y -> convert(HouseholderTrafo, y)
+
 
 Base.:(==)(a::HouseholderTrafo, b::HouseholderTrafo) = a.V == b.V
 Base.isequal(a::HouseholderTrafo, b::HouseholderTrafo) = isequal(a.V, b.V)
