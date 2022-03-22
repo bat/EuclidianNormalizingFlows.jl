@@ -25,7 +25,7 @@ end
 function optimize_whitening(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
-    optstate = Optimisers.state(optimizer, deepcopy(initial_trafo)),
+    optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
     negll_history = Vector{Float64}()
 )
     batchsize = round(Int, length(smpls) / nbatches)
@@ -37,7 +37,7 @@ function optimize_whitening(
         for batch in batches
             X = flatview(batch)
             negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
-            state, trafo = Optimisers.update(optimizer, state, trafo, d_trafo)
+            state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end
     end
