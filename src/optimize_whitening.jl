@@ -15,13 +15,6 @@ function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
 end
 
 
-function mvnormal_negll_trafograd(trafo_ctor, trafo_params::AbstractVector{<:Real}, X::AbstractMatrix{<:Real})
-    negll, back = Zygote.pullback((trafo_params, X) -> mvnormal_negll_trafo(trafo_ctor(trafo_params), X), trafo_params, X)
-    d_trafo = back(one(eltype(trafo_params)))[1]
-    return negll, d_trafo
-end
-
-
 function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
     negll, back = Zygote.pullback(mvnormal_negll_trafo, trafo, X)
     d_trafo = back(one(eltype(X)))[1]
@@ -29,33 +22,25 @@ function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
 end
 
 
-struct TypedCtor{F,T}<:Function
-    f::F
-end
-
-(ctor::TypedCtor{F,T})(args...) where {F,T} = ctor.f(args...)::T
-
 function optimize_whitening(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
-    optstate = Optimisers.init(optimizer, Optimisers.destructure(deepcopy(initial_trafo))[1]),
+    optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
     negll_history = Vector{Float64}()
 )
     batchsize = round(Int, length(smpls) / nbatches)
     batches = collect(Iterators.partition(smpls, batchsize))
-    trafo_params, re = destructure(deepcopy(initial_trafo))
-    trafo_ctor = TypedCtor{typeof(re),typeof(initial_trafo)}(re)
+    trafo = deepcopy(initial_trafo)
     state = deepcopy(optstate)
     negll_hist = Vector{Float64}()
     for i in 1:nepochs
         for batch in batches
             X = flatview(batch)
-            negll, d_trafo_params = mvnormal_negll_trafograd(trafo_ctor, trafo_params, X)
-            state, new_trafo_params = Optimisers.apply!(optimizer, state, trafo_params, d_trafo_params)
-            trafo_params .= new_trafo_params  # new_trafo_params may be a Base.Broadcast.Broadcasted
+            negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end
     end
-    (result = trafo_ctor(trafo_params), optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
 export optimize_trafo
