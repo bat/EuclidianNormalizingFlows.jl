@@ -30,6 +30,9 @@ using SpecialFunctions
 using StatsBase
 using ValueShapes
 
+using EllipsisNotation
+using NNlib 
+
 import Zygote
 import ZygoteRules
 
