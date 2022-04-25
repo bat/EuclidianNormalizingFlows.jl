@@ -6,4 +6,5 @@ Test.@testset "Package EuclidianNormalizingFlows" begin
     include("test_householder_trafo.jl")
     include("test_center_stretch.jl")
     include("test_johnson_trafo.jl")
+    include("test_linear_rational_spline.jl")
 end # testset
