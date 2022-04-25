@@ -1,49 +1,69 @@
+# This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
+
 const DEFAULT_MIN_BIN_WIDTH = 1e-3
 const DEFAULT_MIN_BIN_HEIGHT = 1e-3
 const DEFAULT_MIN_DERIVATIVE = 1e-3
 
-function unconstrained_rational_linear_spline(inputs::AbstractArray,
-                                         unnormalized_widths::AbstractArray,
-                                         unnormalized_heights::AbstractArray,
-                                         unnormalized_derivatives::AbstractArray,
-                                         unnormalized_lambdas::AbstractArray,
-                                         inverse::Bool = false,
-                                         tails::String = "linear",
-                                         tail_bound::AbstractFloat = 1.,
-                                         min_bin_width::AbstractFloat = DEFAULT_MIN_BIN_WIDTH,
-                                         min_bin_height::AbstractFloat = DEFAULT_MIN_BIN_HEIGHT,
-                                         min_derivative::AbstractFloat = DEFAULT_MIN_DERIVATIVE)
+"""
+    unconstrained_rational_linear_spline(   inputs::AbstractVector,
+                                            unnormalized_widths::AbstractVector,
+                                            unnormalized_heights::AbstractVector,
+                                            unnormalized_derivatives::AbstractVector,
+                                            unnormalized_lambdas::AbstractVector,
+                                            inverse::Bool = false,
+                                            tail_bound::AbstractFloat = 1.,
+                                            min_bin_width::AbstractFloat = DEFAULT_MIN_BIN_WIDTH,
+                                            min_bin_height::AbstractFloat = DEFAULT_MIN_BIN_HEIGHT,
+                                            min_derivative::AbstractFloat = DEFAULT_MIN_DERIVATIVE)
 
-    inside_interval_mask = [(inputs >= -tail_bound) & (inputs <= tail_bound)]
-    outside_interval_mask = ~inside_interval_mask
+    Evaluate the linear rational spline transformation g(x) of input data x for inputs that are not 
+    constraint to the interval mask. Inputs that lie outside the interval mask are transformed with 
+    the identity transformation.
 
+    *inputs*, *unnormalized_widths*, *unnormalized_heights*, *unnormalized_derivatives*, 
+    and *unnormalized_lambdas* must all have the same lenght
+"""
+function unconstrained_rational_linear_spline(  inputs::AbstractVector,
+                                                unnormalized_widths::AbstractVector,
+                                                unnormalized_heights::AbstractVector,
+                                                unnormalized_derivatives::AbstractVector,
+                                                unnormalized_lambdas::AbstractVector,
+                                                inverse::Bool = false,
+                                                tail_bound::AbstractFloat = 1.,
+                                                min_bin_width::AbstractFloat = DEFAULT_MIN_BIN_WIDTH,
+                                                min_bin_height::AbstractFloat = DEFAULT_MIN_BIN_HEIGHT,
+                                                min_derivative::AbstractFloat = DEFAULT_MIN_DERIVATIVE)
+
+    # find indices of inputs that lie inside and outside the interval mask
+    inside_interval_mask = (inputs .>= -tail_bound) .& (inputs .<= tail_bound)
+    outside_interval_mask = .~inside_interval_mask
+
+    # intitiate return values
     outputs   = zero(inputs)
     logabsdet = zero(inputs)
 
-    if tails == "linear"    
-        pushfirst!(unnormalized_derivatives, 1)
-        push!(unnormalized_derivatives, 1)
-        constant = log(exp(1 - min_derivative) - 1)
-        unnormalized_derivatives[.., 1] = constant
-        unnormalized_derivatives[.., length(unnormalized_derivatives)] = constant
+    # create workable derivative vector for rational_linear_spline(); padded with constant values at the interval ends
+    unnorm_deriv_inside_interval_mask = unnormalized_derivatives[inside_interval_mask]
+    constant = log(exp(1 - min_derivative) - 1)
+    pushfirst!(unnorm_deriv_inside_interval_mask, constant)
+    unnorm_deriv_inside_interval_mask[end] =  constant
 
-        outputs[outside_interval_mask] = inputs[outside_interval_mask]
-        logabsdet[outside_interval_mask] = 0
-    else
-        Error("tails are not implemented?")
-    end 
+    # "apply" identity transformation to inputs outside the interval mask
+    outputs[outside_interval_mask] = inputs[outside_interval_mask]
+    logabsdet[outside_interval_mask] .= 0
 
+    # apply linear rational spline transform to inputs inside the interval mask
     outputs[inside_interval_mask], logabsdet[inside_interval_mask] = rational_linear_spline(
                                 inputs[inside_interval_mask],
-                                unnormalized_widths[inside_interval_mask, :],
-                                unnormalized_heights[inside_interval_mask, :],
-                                unnormalized_derivatives[inside_interval_mask, :],
-                                unnormalized_lambdas[inside_interval_mask, :],
+                                unnormalized_widths[inside_interval_mask],
+                                unnormalized_heights[inside_interval_mask],
+                                unnorm_deriv_inside_interval_mask,
+                                unnormalized_lambdas[inside_interval_mask],
                                 inverse,
-                                left = -tail_bound, 
-                                right = tail_bound, 
-                                bottom = -tail_bound, 
-                                top = tail_bound,
+                                -tail_bound, 
+                                tail_bound, 
+                                -tail_bound, 
+                                tail_bound,
                                 min_bin_width,
                                 min_bin_height,
                                 min_derivative)
@@ -52,11 +72,35 @@ function unconstrained_rational_linear_spline(inputs::AbstractArray,
     return outputs, logabsdet
 end 
 
-function rational_linear_spline(inputs::AbstractArray,
-                                unnormalized_widths::AbstractArray,
-                                unnormalized_heights::AbstractArray,
-                                unnormalized_derivatives::AbstractArray,
-                                unnormalized_lambdas::AbstractArray,
+"""
+    rational_linear_spline( inputs::AbstractVector,
+                            unnormalized_widths::AbstractVector,
+                            unnormalized_heights::AbstractVector,
+                            unnormalized_derivatives::AbstractVector,
+                            unnormalized_lambdas::AbstractVector,
+                            inverse::Bool = false,
+                            left::AbstractFloat = 0., 
+                            right::AbstractFloat = 1., 
+                            bottom::AbstractFloat = 0., 
+                            top::AbstractFloat = 1.,
+                            min_bin_width::AbstractFloat = DEFAULT_MIN_BIN_WIDTH,
+                            min_bin_height::AbstractFloat = DEFAULT_MIN_BIN_HEIGHT,
+                            min_derivative::AbstractFloat = DEFAULT_MIN_DERIVATIVE)
+
+
+    Evaluate the linear rational spline transformation g(x) of input data x for inputs constraint 
+    to the interval mask. 
+
+    *inputs*, *unnormalized_widths*, *unnormalized_heights*, and *unnormalized_lambdas* must all 
+    have the same lenght.
+
+    *unnormalized_derivatives* must of length (lenght(inputs) + 1) 
+"""
+function rational_linear_spline(inputs::AbstractVector,
+                                unnormalized_widths::AbstractVector,
+                                unnormalized_heights::AbstractVector,
+                                unnormalized_derivatives::AbstractVector,
+                                unnormalized_lambdas::AbstractVector,
                                 inverse::Bool = false,
                                 left::AbstractFloat = 0., 
                                 right::AbstractFloat = 1., 
@@ -66,104 +110,111 @@ function rational_linear_spline(inputs::AbstractArray,
                                 min_bin_height::AbstractFloat = DEFAULT_MIN_BIN_HEIGHT,
                                 min_derivative::AbstractFloat = DEFAULT_MIN_DERIVATIVE)
 
-    if minimum(inputs) < left | maximum(inputs) > right
-        Error("InputOutsideDomain")
+    if (minimum(inputs) < left) | (maximum(inputs) > right)
+        Error("Input Outside Domain")
     end 
 
     num_bins = length(unnormalized_widths)
 
-    if min_bin_width * num_bins > 1.0
+    if (min_bin_width * num_bins > 1.0)
         Error("Minimal bin width too large for the number of bins")
     end 
 
-    if min_bin_height * num_bins > 1.0
+    if (min_bin_height * num_bins > 1.0)
         Error("Minimal bin height too large for the number of bins")
     end 
 
-    widths = softmax(unnormalized_widths, ndims(unnormalized_widths))
-    widths = min_bin_width + (1 - min_bin_width * num_bins) * widths
+    # interpret the learned parameters as bin widths:
+    widths = softmax(unnormalized_widths)  
+    widths = min_bin_width .+ (1 - min_bin_width * num_bins) * widths
 
-    cumwidths = cumsum(widths)                 #cumsum(widths, ndims(widths))
-    #cumwidths = F.pad(cumwidths, pad=(1, 0), mode='constant', value=0.0)
-    pushfirst!(cumwidths, 1)
-    push!(cumwidths, 0)
-    cumwidths = (right - left) * cumwidths + left
+    # calculate the bin edges ( = x values of the knots), stored in cumwidhts:
+    cumwidths = cumsum(widths)   
+    cumwidths = (right - left) * cumwidths .+ left
 
-    cumwidths[.., 0] = left
-    cumwidths[.., length(cumwidths)] = right
-    widths = cumwidths[.., 2:end] - cumwidths[.., 1:end]
+    pushfirst!(cumwidths, left) # add the edge of the left most bin (left end of the interval mask)
+    cumwidths[end] = right      # ensure that the edge of the right most bin is the correct value (right end of the interval mask) (maybe unnecessary)
 
-    derivatives = min_derivative + softplus(unnormalized_derivatives)
+    widths = cumwidths[2:end] .- cumwidths[1:end - 1]
 
-    heights = softmax(unnormalized_heights, ndims(unnormalized_heights))
-    heights = min_bin_height + (1 - min_bin_height * num_bins) * heights
-    cumheights = cumsum(heights)               #cumsum(heights, ndims(heights))
-    #cumheights = F.pad(cumheights, pad=(1, 0), mode='constant', value=0.0)
-    pushfirst!(cumheights, 1)
-    push!(cumheights, 0)
+    # interpret the learned parameters as the derivatives of the spline functions at their respective knot:
+    derivatives = min_derivative .+ softplus.(unnormalized_derivatives)
 
-    cumheights = (top - bottom) * cumheights + bottom
-    cumheights[.., 1] = bottom
-    cumheights[.., length(cumheights)] = top
-    heights = cumheights[.., 2:end] - cumheights[.., 1:end]
+    # interpret the learned parameters as bin heights
+    heights = softmax(unnormalized_heights)
+    heights = min_bin_height .+ (1 - min_bin_height * num_bins) * heights
 
-    # watch carefully if this works: (original uses np.newaxis)
+    # calculate the upper bin edges ( = y values of the knots), stored in cumheights:
+    cumheights = cumsum(heights)          
+    cumheights = (top - bottom) * cumheights .+ bottom
+
+    pushfirst!(cumheights, bottom) # add the height of the left most bin (bottom end of the interval mask)
+    cumheights[end] = top          # ensure that the upper edge of the right most bin is the correct value (top end of the interval mask) (maybe unnecessary)
+
+    heights = cumheights[2:end] .- cumheights[1:end - 1]
+
+    # to evaluate a spline transform at location x, find in which bin x lies:
     if inverse
-        bin_idx = searchsortedfirst.(cumheights, inputs)
+        bin_idx = searchsortedlast.(Ref(cumheights), inputs)
     else
-        bin_idx = searchsortedfirst.(cumwidths, inputs)
+        bin_idx = searchsortedlast.(Ref(cumwidths), inputs)
     end 
 
-    input_cumwidths = selectdim(cumwidhts, ndims(cumwidths), bin_idx)[.., 1]
-    input_bin_widths = selectdim(widhts, ndims(widths), bin_idx)[.., 1]
+    # pick out the spline prameters that corresponds to the input data:
+    input_cumwidths = cumwidths[bin_idx]
+    input_bin_widths = widths[bin_idx]
 
-    input_cumheights = cselectdim(cumheights, ndims(cumheights), bin_idx)[.., 1]
-    delta = heights / widths
-    input_delta = selectdim(delta, ndims(delta), bin_idx)[.., 1]
+    input_cumheights = cumheights[bin_idx]
+    input_heights = heights[bin_idx]
 
-    input_derivatives = selectdim(derivatives, ndims(derivatives), bin_idx)[.., 1]
-    input_derivatives_plus_one = selectdim(derivatives[.., 2:end], ndims(derivatives[.., 2:end]), bin_idx)[.., 1]
+    delta = heights ./ widths
+    input_delta = delta[bin_idx]
 
-    input_heights = selectdim(heigths, ndims(heights), bin_idx)[.., 1]
+    input_derivatives = derivatives[1:end - 1][bin_idx]      # kth derivative 
+    input_derivatives_plus_one = derivatives[2:end][bin_idx] # k + 1st derivative
 
-    lambdas = 0.95 * sigmoid(unnormalized_lambdas) + 0.025
+    # define the lambdas for the bins (see 'Invertible Generative Modeling using Linear Rational Splines' Dolatabadi et al., sec.3.2)
+    lambdas = 0.95 * sigmoid.(unnormalized_lambdas) .+ 0.025
 
-    lam = selectdim(lambdas, ndims(lambdas), bin_idx)[.., 1]
+    # define spline function prameters:
+    lam = lambdas[bin_idx]
     wa  = 1
-    wb  = sqrt(input_derivatives/input_derivatives_plus_one) * wa
-    wc  = (lam * wa * input_derivatives + (1-lam) * wb * input_derivatives_plus_one)/input_delta
+    wb  = sqrt.(input_derivatives./input_derivatives_plus_one) * wa
+    wc  = (lam * wa .* input_derivatives .+ (1 .- lam) .* wb .* input_derivatives_plus_one)./input_delta
     ya  = input_cumheights
-    yb  = input_heights + input_cumheights
-    yc  = ((1-lam) * wa * ya + lam * wb * yb)/((1-lam) * wa + lam * wb)
+    yb  = input_heights .+ input_cumheights
+    yc  = ((1 .- lam) * wa .* ya .+ lam .* wb .* yb)./ ((1 .- lam) * wa .+ lam .* wb)
 
+    # compute spline functions and store values in 'outputs' aswell as the log abs value of the determinant in 'logabsdet'
+    # the boolean factors in the computation determine in which 'virtual bin' the input x lies (see 'Invertible Generative Modeling using Linear Rational Splines' Dolatabadi et al., sec.3.2)
     if inverse
 
-        numerator = (lam * wa * (ya - inputs)) * float(inputs <= yc) +  ((wc - lam * wb) * inputs + lam * wb * yb - wc * yc) * float(inputs > yc)
+        numerator = (lam * wa .* (ya .- inputs)) .* float(inputs .<= yc) .+ ((wc .- lam .* wb) .* inputs .+ lam .* wb .* yb .- wc .* yc) .* float(inputs .> yc)
 
-        denominator = ((wc - wa) * inputs + wa * ya - wc * yc) * float(inputs <= yc) + ((wc - wb) * inputs + wb * yb - wc * yc) * float(inputs > yc)
+        denominator = ((wc .- wa) .* inputs .+ wa * ya .- wc .* yc) .* float(inputs .<= yc) .+ ((wc .- wb) .* inputs .+ wb .* yb .- wc .* yc) .* float(inputs .> yc)
 
-        theta = numerator/denominator
+        theta = numerator./denominator
 
-        outputs = theta * input_bin_widths + input_cumwidths
+        outputs = theta .* input_bin_widths .+ input_cumwidths
 
-        derivative_numerator = (wa * wc * lam * (yc - ya) * float(inputs <= yc) + wb * wc * (1 - lam) * (yb - yc) * float(inputs > yc)) * input_bin_widths
+        derivative_numerator = (wa * wc .* lam .* (yc .- ya) .* float(inputs .<= yc) .+ wb .* wc .* (1 .- lam) .* (yb .- yc) .* float(inputs .> yc)) .* input_bin_widths
 
-        logabsdet = log(derivative_numerator) - 2 * log(abs(denominator))
+        logabsdet = log.(derivative_numerator) .- 2 * log.(abs.(denominator))
 
         return outputs, logabsdet
     else
 
-        theta = (inputs - input_cumwidths) / input_bin_widths
+        theta = (inputs .- input_cumwidths) ./ input_bin_widths
 
-        numerator = (wa * ya * (lam - theta) + wc * yc * theta) * float(theta <= lam) + (wc * yc * (1 - theta) + wb * yb * (theta - lam)) * float(theta > lam)
+        numerator = (wa * ya .* (lam .- theta) .+ wc .* yc .* theta) .* float(theta .<= lam) .+ (wc .* yc .* (1 .- theta) .+ wb .* yb .* (theta .- lam)) .* float(theta .> lam)
 
-        denominator = (wa * (lam - theta) + wc * theta) * float(theta <= lam) + (wc * (1 - theta) + wb * (theta - lam)) * float(theta > lam)
+        denominator = (wa .* (lam .- theta) .+ wc .* theta) .* float(theta .<= lam) .+ (wc .* (1 .- theta) .+ wb .* (theta .- lam)) .* float(theta .> lam)
 
-        outputs = numerator / denominator
+        outputs = numerator ./ denominator
 
-        derivative_numerator = (wa * wc * lam * (yc - ya) * float(theta <= lam) + wb * wc * (1 - lam) * (yb - yc) * float(theta > lam)) / input_bin_widths
+        derivative_numerator = (wa .* wc .* lam .* (yc .- ya) .* float(theta .<= lam) .+ wb .* wc .* (1 .- lam) .* (yb .- yc) .* float(theta .> lam)) ./ input_bin_widths
 
-        logabsdet = log(derivative_numerator) - 2 * log(abs(denominator))
+        logabsdet = log.(derivative_numerator) .- 2 * log.(abs.(denominator))
     end 
 
     return outputs, logabsdet

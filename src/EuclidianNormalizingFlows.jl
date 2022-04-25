@@ -30,8 +30,8 @@ using SpecialFunctions
 using StatsBase
 using ValueShapes
 
-using EllipsisNotation
 using NNlib 
+using Test
 
 import Zygote
 import ZygoteRules
@@ -49,5 +49,6 @@ include("householder_trafo.jl")
 include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
+include("linear_rational_spline.jl")
 
 end # module
