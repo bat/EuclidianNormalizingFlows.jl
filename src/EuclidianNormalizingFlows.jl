@@ -49,6 +49,6 @@ include("householder_trafo.jl")
 include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
-include("linear_rational_splines.jl")
+include("spline_trafo.jl")
 
 end # module
