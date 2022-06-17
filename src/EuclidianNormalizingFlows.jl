@@ -29,6 +29,7 @@ using Parameters
 using SpecialFunctions
 using StatsBase
 using ValueShapes
+using KernelAbstractions
 
 import Zygote
 import ZygoteRules
@@ -46,5 +47,6 @@ include("householder_trafo.jl")
 include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
+include("spline_trafo.jl")
 
 end # module
