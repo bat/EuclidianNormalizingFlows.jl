@@ -1,3 +1,6 @@
+# This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
+# The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
+
 struct RationalQuadSpline <: Function
     widths::AbstractMatrix{<:Real}
     heights::AbstractMatrix{<:Real}
@@ -55,9 +58,7 @@ function InverseFunctions.inverse(f::RationalQuadSplineInv)
     return RationalQuadSpline(f.widths, f.heights, f.derivatives)
 end
 
-########################
 # Transformation forward: 
-########################
 
 function spline_forward(trafo::RationalQuadSpline, x::AbstractMatrix{<:Real})
     
@@ -235,7 +236,7 @@ function eval_forward_spline_params(
     # LogJacobian
     LogJac = log(abs(nom_4))-2*log(abs(denom))
 
-    # Gradient for parameters:
+    # Gradient of parameters:
 
     # dy / dw_k
     ∂s∂wₖ = Δy/Δx^2
@@ -289,10 +290,7 @@ function eval_forward_spline_params(
 
 end
 
-
-########################
 # Transformation backward: 
-########################
 
 function spline_backward(trafo::RationalQuadSplineInv, x::AbstractMatrix{<:Real})
 
@@ -388,7 +386,7 @@ function eval_backward_spline_params(
 
     y = (2 * c / denom) * Δx + wₖ
 
-    # Gradient Computation:
+    # Gradient computation:
     da =  (dₖ₊₁ + dₖ - 2*sk)
     db = -(dₖ₊₁ + dₖ - 2*sk)
     dc = - sk
@@ -401,10 +399,7 @@ function eval_backward_spline_params(
     return y, LogJac
 end
 
-
-########################
 # Utils: 
-########################
 
 function softmax_with_jac(x::AbstractVector)
 
@@ -414,7 +409,7 @@ function softmax_with_jac(x::AbstractVector)
     return exp_x ./ sum_exp_x 
 end
 
-function softmax_with_jac_mat(x)
+function softmax_with_jac_mat(x::AbstractMatrix)
 
     val = cat([softmax_with_jac(i) for i in eachrow(x)]..., dims=2)'
 
