@@ -30,6 +30,7 @@ using SpecialFunctions
 using StatsBase
 using ValueShapes
 using KernelAbstractions
+using KernelAbstractions: @atomic
 
 import Zygote
 import ZygoteRules
