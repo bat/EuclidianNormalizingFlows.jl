@@ -71,23 +71,48 @@ function spline_forward(trafo::RationalQuadSpline, x::AbstractMatrix{<:Real})
     h = cumsum_with_jac_mat(softmax_with_jac_mat(trafo.heights))
     d = softplus_with_jac_mat(trafo.derivatives)
 
-    w1 = permutedims(cat([w for i in 1:nsmpls]..., dims=3), [1,3,2])
-    h1 = permutedims(cat([h for i in 1:nsmpls]..., dims=3), [1,3,2])
-    d1 = permutedims(cat([d for i in 1:nsmpls]..., dims=3), [1,3,2])
-
-    res  = spline_forward(x, w1, h1, d1, w1, h1, d1)
-
-    return res[1],  res[2]
+    return spline_forward(x, w, h, d, w, h, d)
 end
 
 function spline_forward(
+    x::AbstractArray{M0},
+    w::AbstractArray{M1},
+    h::AbstractArray{M2},
+    d::AbstractArray{M3},
+    w_logJac::AbstractArray{M4},
+    h_logJac::AbstractArray{M5},
+    d_logJac::AbstractArray{M6};
+    B=5.
+) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
+
+    T = promote_type(M0, M1, M2, M3, M4, M5, M6)
+
+    ndims = size(x, 1)
+    nsmpls = size(x, 2)
+
+    y = zeros(T, ndims, nsmpls)
+    LogJac = zeros(T, 1, nsmpls)
+
+    device = KernelAbstractions.get_device(x)
+    n = device isa GPU ? 256 : 4
+    kernel! = spline_forward_kernel!(device, n)
+
+    ev = kernel!(x, y, LogJac, w, h, d, ndrange=size(x))
+
+    wait(ev)
+
+    return y, LogJac
+end
+
+function spline_forward_pullback(
         x::AbstractArray{M0},
         w::AbstractArray{M1},
         h::AbstractArray{M2},
         d::AbstractArray{M3},
         w_logJac::AbstractArray{M4},
         h_logJac::AbstractArray{M5},
-        d_logJac::AbstractArray{M6};
+        d_logJac::AbstractArray{M6},
+        tangent::ChainRulesCore.Tangent;
         B=5.
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
@@ -95,67 +120,74 @@ function spline_forward(
 
     ndims = size(x, 1)
     nsmpls = size(x, 2)
-    nparams = size(w, 3)
+    nparams = size(w, 2)
 
     y = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
 
-    ∂y∂w = zeros(T, ndims, nsmpls, nparams)
-    ∂y∂h = zeros(T, ndims, nsmpls, nparams)
-    ∂y∂d = zeros(T, ndims, nsmpls, nparams-1)
+    ∂y∂w = zeros(T, ndims, nparams)
+    ∂y∂h = zeros(T, ndims, nparams)
+    ∂y∂d = zeros(T, ndims, nparams-1)
 
-    ∂LogJac∂w = zeros(T, ndims, nsmpls, nparams)
-    ∂LogJac∂h = zeros(T, ndims, nsmpls, nparams)
-    ∂LogJac∂d = zeros(T, ndims, nsmpls, nparams-1)
+    ∂LogJac∂w = zeros(T, ndims, nparams)
+    ∂LogJac∂h = zeros(T, ndims, nparams)
+    ∂LogJac∂d = zeros(T, ndims, nparams-1)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
-    kernel! = spline_forward_kernel!(device, n)
+    kernel! = spline_forward_pullback_kernel!(device, n)
 
     ev = kernel!(
         x, y, LogJac,
         w, h, d,
         ∂y∂w, ∂y∂h, ∂y∂d,
-        ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d,
+        ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d, 
+        tangent,
         ndrange=size(x)
         )
 
     wait(ev)
 
-    return y, LogJac, ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
-end
-
-function ChainRulesCore.rrule(
-        ::typeof(spline_forward),
-        x::AbstractArray{M0},
-        w::AbstractArray{M1},
-        h::AbstractArray{M2},
-        d::AbstractArray{M3},
-        w_logJac::AbstractArray{M4},
-        h_logJac::AbstractArray{M5},
-        d_logJac::AbstractArray{M6};
-    ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
-
-    y, LogJac, ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
-
-        function pullback(yhat)
-        return begin
-            NoTangent(),
-            @thunk(yhat[1] .* exp.(LogJac)),
-            ∂y∂w .* yhat[1],
-            ∂y∂h .* yhat[1],
-            ∂y∂d .* yhat[1],
-            ∂LogJac∂w .* yhat[2],
-            ∂LogJac∂h .* yhat[2],
-            ∂LogJac∂d .* yhat[2]
-        end
-    end
-
-    return (y, LogJac), pullback
-
+    return NoTangent(), @thunk(tangent[1] .* exp.(LogJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
 
 @kernel function spline_forward_kernel!(
+    x::AbstractArray,
+    y::AbstractArray,
+    LogJac::AbstractArray,
+    w_inp::AbstractArray,
+    h_inp::AbstractArray,
+    d_inp::AbstractArray;
+    B = 5
+)
+
+    i, j = @index(Global, NTuple)
+
+    # Create 1D arrays and add boundary conditions:
+    w = convert.(eltype(w_inp), [-B; w_inp[i,:]...])
+    h = convert.(eltype(h_inp), [-B; h_inp[i,:]...])
+    d = convert.(eltype(d_inp), [1; d_inp[i,:]...; 1])
+
+    K = length(w)
+
+    # Find the bin index
+    k1 = searchsortedfirst_impl(w, x[i,j]) - 1
+    k2 = one(typeof(k1))
+
+    # Is outside of range
+    isoutside = (k1 >= K) || (k1 == 0)
+    k = Base.ifelse(isoutside, k2, k1)
+
+    x_tmp = Base.ifelse(isoutside, w[k], x[i,j]) # Simplifies unnecessary calculations
+    (yᵢⱼ, LogJacᵢⱼ, _, _, _, _, _, _) = eval_forward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp, K, k)
+
+    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+
+end
+
+
+@kernel function spline_forward_pullback_kernel!(
         x::AbstractArray,
         y::AbstractArray,
         LogJac::AbstractArray,
@@ -167,16 +199,17 @@ end
         ∂y∂d::AbstractArray,
         ∂LogJac∂w::AbstractArray,
         ∂LogJac∂h::AbstractArray,
-        ∂LogJac∂d::AbstractArray;
+        ∂LogJac∂d::AbstractArray,
+        tangent::ChainRulesCore.Tangent;
         B = 5
     )
 
     i, j = @index(Global, NTuple)
 
     # Create 1D arrays and add boundary conditions:
-    w = convert.(eltype(w_inp), [-B; w_inp[i,j,:]...])
-    h = convert.(eltype(h_inp), [-B; h_inp[i,j,:]...])
-    d = convert.(eltype(d_inp), [1; d_inp[i,j,:]...; 1])
+    w = convert.(eltype(w_inp), [-B; w_inp[i,:]...])
+    h = convert.(eltype(h_inp), [-B; h_inp[i,:]...])
+    d = convert.(eltype(d_inp), [1; d_inp[i,:]...; 1])
 
     K = length(w)
 
@@ -191,16 +224,38 @@ end
     x_tmp = Base.ifelse(isoutside, w[k], x[i,j]) # Simplifies unnecessary calculations
     (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp, K, k)
 
-    y[i,j] += Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
-   
-    ∂y∂w[i,j,:] .+= Base.ifelse(isoutside, zeros(K-1), ∂y∂wₖ) 
-    ∂y∂h[i,j,:] .+= Base.ifelse(isoutside, zeros(K-1), ∂y∂hₖ) 
-    ∂y∂d[i,j,:] .+= Base.ifelse(isoutside, zeros(K-2), ∂y∂dₖ) 
+    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
 
-    ∂LogJac∂w[i,j,:] .+= Base.ifelse(isoutside, zeros(K-1), ∂LogJac∂wₖ)
-    ∂LogJac∂h[i,j,:] .+= Base.ifelse(isoutside, zeros(K-1), ∂LogJac∂hₖ)
-    ∂LogJac∂d[i,j,:] .+= Base.ifelse(isoutside, zeros(K-2), ∂LogJac∂dₖ)
+    for par_ind in Base.OneTo(K-1)
+        @atomic ∂y∂w[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[par_ind]) 
+        @atomic ∂y∂h[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[par_ind]) 
+        @atomic ∂LogJac∂w[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[par_ind])
+        @atomic ∂LogJac∂h[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[par_ind])
+
+        if par_ind <= K-2
+            @atomic ∂y∂d[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[par_ind]) 
+            @atomic ∂LogJac∂d[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[par_ind])
+        end
+    end
+end
+
+function ChainRulesCore.rrule(
+    ::typeof(spline_forward),
+    x::AbstractArray{M0},
+    w::AbstractArray{M1},
+    h::AbstractArray{M2},
+    d::AbstractArray{M3},
+    w_logJac::AbstractArray{M4},
+    h_logJac::AbstractArray{M5},
+    d_logJac::AbstractArray{M6};
+) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
+
+# To do: Rewrite to avoid repeating calculation. 
+y, LogJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
+pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
+
+return (y, LogJac), pullback
 
 end
 
@@ -304,6 +359,8 @@ function spline_backward(trafo::RationalQuadSplineInv, x::AbstractMatrix{<:Real}
     return spline_backward(x, w, h, d)
 end
 
+
+
 function spline_backward(
         x::AbstractArray{M0},
         w::AbstractArray{M1},
@@ -362,8 +419,8 @@ end
     x_tmp = Base.ifelse(isoutside, h[k], x[i,j]) # Simplifies unnecessary calculations
     (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp)
 
-    y[i,j] += Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
 
 end
 
