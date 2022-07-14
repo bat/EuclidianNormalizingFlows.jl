@@ -89,6 +89,19 @@ function spline_forward(
 
     ndims = size(x, 1)
     nsmpls = size(x, 2)
+    
+    B = fill(B, size(w, 1))
+    one = ones(size(d, 1))
+
+    # add boundary conditions:
+    w = convert(ElasticArray{eltype(w)}, w)
+    h = convert(ElasticArray{eltype(h)}, h)
+    d = convert(ElasticArray{eltype(d)}, d)
+
+    prepend!(w, -B)
+    prepend!(h, -B)
+    prepend!(d, one)
+    append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
@@ -103,6 +116,7 @@ function spline_forward(
 
     return y, LogJac
 end
+
 
 function spline_forward_pullback(
         x::AbstractArray{M0},
@@ -121,6 +135,19 @@ function spline_forward_pullback(
     ndims = size(x, 1)
     nsmpls = size(x, 2)
     nparams = size(w, 2)
+
+    B = fill(B, size(w, 1))
+    one = ones(size(d, 1))
+
+    # add boundary conditions:
+    w = convert(ElasticArray{eltype(w)}, w)
+    h = convert(ElasticArray{eltype(h)}, h)
+    d = convert(ElasticArray{eltype(d)}, d)
+
+    prepend!(w, -B)
+    prepend!(h, -B)
+    prepend!(d, one)
+    append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
@@ -155,31 +182,24 @@ end
     x::AbstractArray,
     y::AbstractArray,
     LogJac::AbstractArray,
-    w_inp::AbstractArray,
-    h_inp::AbstractArray,
-    d_inp::AbstractArray;
-    B = 5
+    w::AbstractArray,
+    h::AbstractArray,
+    d::AbstractArray
 )
-
     i, j = @index(Global, NTuple)
 
-    # Create 1D arrays and add boundary conditions:
-    w = convert.(eltype(w_inp), [-B; w_inp[i,:]...])
-    h = convert.(eltype(h_inp), [-B; h_inp[i,:]...])
-    d = convert.(eltype(d_inp), [1; d_inp[i,:]...; 1])
-
-    K = length(w)
+    K = size(w, 2)
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w, x[i,j]) - 1
+    k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is outside of range
     isoutside = (k1 >= K) || (k1 == 0)
     k = Base.ifelse(isoutside, k2, k1)
 
-    x_tmp = Base.ifelse(isoutside, w[k], x[i,j]) # Simplifies unnecessary calculations
-    (yᵢⱼ, LogJacᵢⱼ, _, _, _, _, _, _) = eval_forward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp, K, k)
+    x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
+    (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
     @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
     @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
@@ -191,38 +211,32 @@ end
         x::AbstractArray,
         y::AbstractArray,
         LogJac::AbstractArray,
-        w_inp::AbstractArray,
-        h_inp::AbstractArray,
-        d_inp::AbstractArray,
+        w::AbstractArray,
+        h::AbstractArray,
+        d::AbstractArray,
         ∂y∂w::AbstractArray,
         ∂y∂h::AbstractArray,
         ∂y∂d::AbstractArray,
         ∂LogJac∂w::AbstractArray,
         ∂LogJac∂h::AbstractArray,
         ∂LogJac∂d::AbstractArray,
-        tangent::ChainRulesCore.Tangent;
-        B = 5
+        tangent::ChainRulesCore.Tangent
     )
 
     i, j = @index(Global, NTuple)
 
-    # Create 1D arrays and add boundary conditions:
-    w = convert.(eltype(w_inp), [-B; w_inp[i,:]...])
-    h = convert.(eltype(h_inp), [-B; h_inp[i,:]...])
-    d = convert.(eltype(d_inp), [1; d_inp[i,:]...; 1])
-
-    K = length(w)
+    K = size(w, 2)
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w, x[i,j]) - 1
+    k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is outside of range
     isoutside = (k1 >= K) || (k1 == 0)
     k = Base.ifelse(isoutside, k2, k1)
 
-    x_tmp = Base.ifelse(isoutside, w[k], x[i,j]) # Simplifies unnecessary calculations
-    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp, K, k)
+    x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
+    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp, K, k)
 
     @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
     @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
@@ -251,15 +265,41 @@ function ChainRulesCore.rrule(
     d_logJac::AbstractArray{M6};
 ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
-# To do: Rewrite to avoid repeating calculation. 
-y, LogJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
-pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
+    # To do: Rewrite to avoid repeating calculation. 
+    y, LogJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
+    pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
 
-return (y, LogJac), pullback
+    return (y, LogJac), pullback
 
 end
 
 function eval_forward_spline_params(
+    wₖ::Real, wₖ₊₁::Real, 
+    hₖ::Real, hₖ₊₁::Real, 
+    dₖ::Real, dₖ₊₁::Real, 
+    x::Real) 
+      
+    Δy = hₖ₊₁ - hₖ
+    Δx = wₖ₊₁ - wₖ
+    sk = Δy / Δx
+    ξ = (x - wₖ) / Δx
+
+    denom = (sk + (dₖ₊₁ + dₖ - 2*sk)*ξ*(1-ξ))
+    nom_1 =  sk*ξ*ξ + dₖ*ξ*(1-ξ)
+    nom_2 = Δy * nom_1
+    nom_3 = dₖ₊₁*ξ*ξ + 2*sk*ξ*(1-ξ) + dₖ*(1-ξ)^2
+    nom_4 = sk*sk*nom_3
+
+    y = hₖ + nom_2/denom
+
+    # LogJacobian
+    LogJac = log(abs(nom_4))-2*log(abs(denom))
+
+    return y, LogJac
+
+end
+
+function eval_forward_spline_params_with_grad(
     wₖ::M0, wₖ₊₁::M0, 
     hₖ::M1, hₖ₊₁::M1, 
     dₖ::M2, dₖ₊₁::M2, 
@@ -360,18 +400,31 @@ function spline_backward(trafo::RationalQuadSplineInv, x::AbstractMatrix{<:Real}
 end
 
 
-
 function spline_backward(
         x::AbstractArray{M0},
         w::AbstractArray{M1},
         h::AbstractArray{M2},
         d::AbstractArray{M3},
+        B = 5.
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real}
 
     T = promote_type(M0, M1, M2, M3)
 
     ndims = size(x, 1)
     nsmpls = size(x, 2)
+
+    B = fill(B, size(w, 1))
+    one = ones(size(d, 1))
+
+    # add boundary conditions:
+    w = convert(ElasticArray{eltype(w)}, w)
+    h = convert(ElasticArray{eltype(h)}, h)
+    d = convert(ElasticArray{eltype(d)}, d)
+
+    prepend!(w, -B)
+    prepend!(h, -B)
+    prepend!(d, one)
+    append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
@@ -391,33 +444,25 @@ end
         x::AbstractMatrix{M0},
         y::AbstractMatrix{M1},
         LogJac::AbstractMatrix{M2},
-        w_inp::AbstractMatrix{M3},
-        h_inp::AbstractMatrix{M4},
-        d_inp::AbstractMatrix{M5};
-        B=5.
+        w::AbstractMatrix{M3},
+        h::AbstractMatrix{M4},
+        d::AbstractMatrix{M5}
     ) where {M0<:Real, M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real,}
 
     i, j = @index(Global, NTuple)
-
-    T = promote_type(M0, M1, M2, M3, M4, M5)
     
-    # Create 1D arrays and add boudnary conditions:
-    w = convert.(eltype(w_inp), [-B; w_inp[i,:]...])
-    h = convert.(eltype(h_inp), [-B; h_inp[i,:]...])
-    d = convert.(eltype(d_inp), [1; d_inp[i,:]...; 1])
-
-    K = length(w)
+    K = size(w, 2)
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(h, x[i,j]) - 1
+    k1 = searchsortedfirst_impl(h[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is outside of range
     isoutside = (k1 >= K) || (k1 == 0)
     k = Base.ifelse(isoutside, k2, k1)
 
-    x_tmp = Base.ifelse(isoutside, h[k], x[i,j]) # Simplifies unnecessary calculations
-    (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[k], w[k+1], h[k], h[k+1], d[k], d[k+1], x_tmp)
+    x_tmp = Base.ifelse(isoutside, h[i,k], x[i,j]) # Simplifies unnecessary calculations
+    (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
     @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
     @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
