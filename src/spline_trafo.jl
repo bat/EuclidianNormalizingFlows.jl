@@ -1,83 +1,6 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 # The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
 
-function yell()
-    println("I am the greatest!")
-end
-export yell
-
-##### EXPERIMENTAL NEW TYPE #####
-
-# struct TrainableRQSpline <: Function
-#     widths::AbstractMatrix{<:Real}
-#     heights::AbstractMatrix{<:Real}
-#     derivatives::AbstractMatrix{<:Real}
-# end
-
-# export TrainableRQSpline
-# @functor TrainableRQSpline
-
-# (f::TrainableRQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
-# @with_kw struct RationalQuadSpline <: Function
-#     widths::AbstractMatrix{<:Real}
-#     heights::AbstractMatrix{<:Real}
-#     derivatives::AbstractMatrix{<:Real}
-#     prom_eltype::Type = Real
-# end
-
-# function RationalQuadSpline(w::AbstractMatrix, h::AbstractMatrix, d::AbstractMatrix, B::T = 5.) where T<: Real
-
-#     # Add boundary conditions.
-#     # first create Zygote.Buffer arrays (https://fluxml.ai/Zygote.jl/latest/utils/#Zygote.Buffer) with appropriate dimensions, 
-#     # then fill the first columns of buff_w and buff_h with -B and the first and last columns of buff_d with 1;
-#     # then fill the remaining empty slots with the elements from the trained parameters.
-
-#     B = fill(B, size(w, 1))
-#     derivative_bound = fill(1, size(d, 1))
-
-#     # Buffer could be replaced with similar() here
-#     buff_w = Zygote.Buffer(w, (size(w, 1), size(w, 2) + 1))
-#     buff_h = Zygote.Buffer(h, (size(h, 1), size(h, 2) + 1))
-#     buff_d = Zygote.Buffer(d, (size(d, 1), size(d, 2) + 2))
-
-#     buff_w[:, 1] = -B
-#     buff_h[:, 1] = -B
-#     buff_d[:, 1] = derivative_bound
-#     buff_d[:, size(buff_d, 2)] = derivative_bound
-
-#     buff_w[:, 2:size(buff_w, 2)] = _cumsum(_softmax(w))
-#     buff_h[:, 2:size(buff_h, 2)] = _cumsum(_softmax(h))
-#     buff_d[:, 2:(size(buff_d, 2) - 1)] = _softplus(d)
-
-#     fin_w = copy(buff_w)
-#     fin_h = copy(buff_h)
-#     fin_d = copy(buff_d)
-
-#     prom_etype = promote_type(eltype(fin_w), eltype(fin_h), eltype(fin_d))
-    
-#     return RationalQuadSpline(fin_w, fin_h, fin_d, prom_etype)
-# end
-
-# Zygote.@adjoint function RationalQuadSpline(w::AbstractMatrix, h::AbstractMatrix, d::AbstractMatrix, B::T = 5.) where T<: Real
-
-#     res = RationalQuadSpline(w, h, d, B)
-
-#     function RQS_pullback(NT::NamedTuple)
-        
-#         return RQS_pullback(values(NT)...)
-#     end
-
-#     function RQS_pullback(what::AbstractMatrix, hhat::AbstractMatrix, dhat::AbstractMatrix, Bhat::Union{Real, Nothing})
-        
-#         wgrad = what * Zygote.gradient(_cumsum(_softmax(w)))
-#         hgrad = hhat * Zygote.gradient(_cumsum(_softmax(h)))
-#         dgrad = dhat * Zygote.gradient(_softplus(d))
-
-#         return (wgrad, hgrad, dgrad, nothing)
-#     end
-
-#     return res, RQS_pullback
-# end
 struct RationalQuadSpline <: Function
     widths::AbstractMatrix{<:Real}
     heights::AbstractMatrix{<:Real}
@@ -275,15 +198,15 @@ end
     k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
-    # Is outside of range
-    isoutside = (k1 >= K) || (k1 == 0)
-    k = Base.ifelse(isoutside, k2, k1)
+    # Is inside of range
+    isinside = (k1 < K) && (k1 > 0)
+    k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
+    x_tmp = Base.ifelse(isinside, x[i,j], w[i,k]) # Simplifies calculations
     (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+    y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
+    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 end
 
 
@@ -311,33 +234,36 @@ end
     k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
-    # Is outside of range
-    isoutside = (k1 >= K) || (k1 == 0)
-    k = Base.ifelse(isoutside, k2, k1)
+    # Is inside of range
+    isinside = (k1 < K) && (k1 > 0)
+    k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
+    x_tmp = Base.ifelse(isinside, x[i,j], w[i,k]) # Simplifies calculations
     (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+    y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
+    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 
-    if 1 < k < K
-        @atomic ∂y∂w_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[1])
-        @atomic ∂y∂h_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[1])
-        @atomic ∂y∂d_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[1])
-        @atomic ∂LogJac∂w_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[1])
-        @atomic ∂LogJac∂h_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[1])
-        @atomic ∂LogJac∂d_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[1])
-    end 
+    left_edge_istrue = (1 < k < K)
+    left_edge_ind = Base.ifelse(left_edge_istrue, k-1, one(typeof(k)))
 
-    if k < K - 1 
-        @atomic ∂y∂w_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[2])
-        @atomic ∂y∂h_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[2])
-        @atomic ∂y∂d_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[2])
-        @atomic ∂LogJac∂w_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[2])
-        @atomic ∂LogJac∂h_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[2])
-        @atomic ∂LogJac∂d_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[2])
-    end
+    @atomic ∂y∂w_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂wₖ[1], zero(eltype(∂y∂wₖ)))
+    @atomic ∂y∂h_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂hₖ[1], zero(eltype(∂y∂hₖ)))
+    @atomic ∂y∂d_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂dₖ[1], zero(eltype(∂y∂dₖ)))
+    @atomic ∂LogJac∂w_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂wₖ[1], zero(eltype(∂LogJac∂wₖ)))
+    @atomic ∂LogJac∂h_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂hₖ[1], zero(eltype(∂LogJac∂hₖ)))
+    @atomic ∂LogJac∂d_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂dₖ[1], zero(eltype(∂LogJac∂dₖ)))
+ 
+    right_edge_istrue = (k < K - 1)
+    right_edge_ind = Base.ifelse(right_edge_istrue, k, one(typeof(k)))
+
+    @atomic ∂y∂w_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂wₖ[2], zero(eltype(∂y∂wₖ)))
+    @atomic ∂y∂h_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂hₖ[2], zero(eltype(∂y∂hₖ)))
+    @atomic ∂y∂d_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂dₖ[2], zero(eltype(∂y∂dₖ)))
+    @atomic ∂LogJac∂w_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂wₖ[2], zero(eltype(∂LogJac∂wₖ)))
+    @atomic ∂LogJac∂h_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂hₖ[2], zero(eltype(∂LogJac∂hₖ)))
+    @atomic ∂LogJac∂d_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂dₖ[2], zero(eltype(∂LogJac∂dₖ)))
+
 end
 
 function ChainRulesCore.rrule(
@@ -524,15 +450,15 @@ end
     k1 = searchsortedfirst_impl(h[i,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
-    # Is outside of range
-    isoutside = (k1 >= K) || (k1 == 0)
-    k = Base.ifelse(isoutside, k2, k1)
+   # Is inside of range
+   isinside = (k1 < K) && (k1 > 0)
+   k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isoutside, h[i,k], x[i,j]) # Simplifies unnecessary calculations
+    x_tmp = Base.ifelse(isinside, x[i,j], h[i,k]) # Simplifies unnecessary calculations
     (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+    y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
+    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 end
 
 function eval_backward_spline_params(
