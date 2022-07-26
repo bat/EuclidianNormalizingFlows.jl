@@ -1,6 +1,83 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 # The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
 
+function yell()
+    println("I am the greatest!")
+end
+export yell
+
+##### EXPERIMENTAL NEW TYPE #####
+
+# struct TrainableRQSpline <: Function
+#     widths::AbstractMatrix{<:Real}
+#     heights::AbstractMatrix{<:Real}
+#     derivatives::AbstractMatrix{<:Real}
+# end
+
+# export TrainableRQSpline
+# @functor TrainableRQSpline
+
+# (f::TrainableRQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
+# @with_kw struct RationalQuadSpline <: Function
+#     widths::AbstractMatrix{<:Real}
+#     heights::AbstractMatrix{<:Real}
+#     derivatives::AbstractMatrix{<:Real}
+#     prom_eltype::Type = Real
+# end
+
+# function RationalQuadSpline(w::AbstractMatrix, h::AbstractMatrix, d::AbstractMatrix, B::T = 5.) where T<: Real
+
+#     # Add boundary conditions.
+#     # first create Zygote.Buffer arrays (https://fluxml.ai/Zygote.jl/latest/utils/#Zygote.Buffer) with appropriate dimensions, 
+#     # then fill the first columns of buff_w and buff_h with -B and the first and last columns of buff_d with 1;
+#     # then fill the remaining empty slots with the elements from the trained parameters.
+
+#     B = fill(B, size(w, 1))
+#     derivative_bound = fill(1, size(d, 1))
+
+#     # Buffer could be replaced with similar() here
+#     buff_w = Zygote.Buffer(w, (size(w, 1), size(w, 2) + 1))
+#     buff_h = Zygote.Buffer(h, (size(h, 1), size(h, 2) + 1))
+#     buff_d = Zygote.Buffer(d, (size(d, 1), size(d, 2) + 2))
+
+#     buff_w[:, 1] = -B
+#     buff_h[:, 1] = -B
+#     buff_d[:, 1] = derivative_bound
+#     buff_d[:, size(buff_d, 2)] = derivative_bound
+
+#     buff_w[:, 2:size(buff_w, 2)] = _cumsum(_softmax(w))
+#     buff_h[:, 2:size(buff_h, 2)] = _cumsum(_softmax(h))
+#     buff_d[:, 2:(size(buff_d, 2) - 1)] = _softplus(d)
+
+#     fin_w = copy(buff_w)
+#     fin_h = copy(buff_h)
+#     fin_d = copy(buff_d)
+
+#     prom_etype = promote_type(eltype(fin_w), eltype(fin_h), eltype(fin_d))
+    
+#     return RationalQuadSpline(fin_w, fin_h, fin_d, prom_etype)
+# end
+
+# Zygote.@adjoint function RationalQuadSpline(w::AbstractMatrix, h::AbstractMatrix, d::AbstractMatrix, B::T = 5.) where T<: Real
+
+#     res = RationalQuadSpline(w, h, d, B)
+
+#     function RQS_pullback(NT::NamedTuple)
+        
+#         return RQS_pullback(values(NT)...)
+#     end
+
+#     function RQS_pullback(what::AbstractMatrix, hhat::AbstractMatrix, dhat::AbstractMatrix, Bhat::Union{Real, Nothing})
+        
+#         wgrad = what * Zygote.gradient(_cumsum(_softmax(w)))
+#         hgrad = hhat * Zygote.gradient(_cumsum(_softmax(h)))
+#         dgrad = dhat * Zygote.gradient(_softplus(d))
+
+#         return (wgrad, hgrad, dgrad, nothing)
+#     end
+
+#     return res, RQS_pullback
+# end
 struct RationalQuadSpline <: Function
     widths::AbstractMatrix{<:Real}
     heights::AbstractMatrix{<:Real}
@@ -67,9 +144,9 @@ function spline_forward(trafo::RationalQuadSpline, x::AbstractMatrix{<:Real})
     @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1) >= 1
     @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1) >= 2
 
-    w = cumsum_with_jac_mat(softmax_with_jac_mat(trafo.widths))
-    h = cumsum_with_jac_mat(softmax_with_jac_mat(trafo.heights))
-    d = softplus_with_jac_mat(trafo.derivatives)
+    w = _cumsum(_softmax(trafo.widths))
+    h = _cumsum(_softmax(trafo.heights))
+    d = _softplus(trafo.derivatives)
 
     return spline_forward(x, w, h, d, w, h, d)
 end
@@ -104,15 +181,17 @@ function spline_forward(
     append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
+    LogJac_tmp = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
     kernel! = spline_forward_kernel!(device, n)
 
-    ev = kernel!(x, y, LogJac, w, h, d, ndrange=size(x))
+    ev = kernel!(x, y, LogJac_tmp, w, h, d, ndrange=size(x))
 
     wait(ev)
+    sum!(LogJac, LogJac_tmp)
 
     return y, LogJac
 end
@@ -150,6 +229,7 @@ function spline_forward_pullback(
     append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
+    LogJac_tmp = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
 
     ∂y∂w = zeros(T, ndims, nparams)
@@ -165,7 +245,7 @@ function spline_forward_pullback(
     kernel! = spline_forward_pullback_kernel!(device, n)
 
     ev = kernel!(
-        x, y, LogJac,
+        x, y, LogJac_tmp, 
         w, h, d,
         ∂y∂w, ∂y∂h, ∂y∂d,
         ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d, 
@@ -174,6 +254,7 @@ function spline_forward_pullback(
         )
 
     wait(ev)
+    sum!(LogJac, LogJac_tmp)
 
     return NoTangent(), @thunk(tangent[1] .* exp.(LogJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
@@ -181,7 +262,7 @@ end
 @kernel function spline_forward_kernel!(
     x::AbstractArray,
     y::AbstractArray,
-    LogJac::AbstractArray,
+    LogJac_tmp::AbstractArray,
     w::AbstractArray,
     h::AbstractArray,
     d::AbstractArray
@@ -201,25 +282,24 @@ end
     x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
     (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
-
+    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
 end
 
 
 @kernel function spline_forward_pullback_kernel!(
         x::AbstractArray,
         y::AbstractArray,
-        LogJac::AbstractArray,
+        LogJac_tmp::AbstractArray,
         w::AbstractArray,
         h::AbstractArray,
         d::AbstractArray,
-        ∂y∂w::AbstractArray,
-        ∂y∂h::AbstractArray,
-        ∂y∂d::AbstractArray,
-        ∂LogJac∂w::AbstractArray,
-        ∂LogJac∂h::AbstractArray,
-        ∂LogJac∂d::AbstractArray,
+        ∂y∂w_tangent::AbstractArray,
+        ∂y∂h_tangent::AbstractArray,
+        ∂y∂d_tangent::AbstractArray,
+        ∂LogJac∂w_tangent::AbstractArray,
+        ∂LogJac∂h_tangent::AbstractArray,
+        ∂LogJac∂d_tangent::AbstractArray,
         tangent::ChainRulesCore.Tangent
     )
 
@@ -236,21 +316,27 @@ end
     k = Base.ifelse(isoutside, k2, k1)
 
     x_tmp = Base.ifelse(isoutside, w[i,k], x[i,j]) # Simplifies unnecessary calculations
-    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp, K, k)
+    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
+    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
 
-    for par_ind in Base.OneTo(K-1)
-        @atomic ∂y∂w[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[par_ind]) 
-        @atomic ∂y∂h[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[par_ind]) 
-        @atomic ∂LogJac∂w[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[par_ind])
-        @atomic ∂LogJac∂h[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[par_ind])
+    if 1 < k < K
+        @atomic ∂y∂w_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[1])
+        @atomic ∂y∂h_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[1])
+        @atomic ∂y∂d_tangent[i, k -  1]      += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[1])
+        @atomic ∂LogJac∂w_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[1])
+        @atomic ∂LogJac∂h_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[1])
+        @atomic ∂LogJac∂d_tangent[i, k -  1] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[1])
+    end 
 
-        if par_ind <= K-2
-            @atomic ∂y∂d[i,par_ind] += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[par_ind]) 
-            @atomic ∂LogJac∂d[i,par_ind] += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[par_ind])
-        end
+    if k < K - 1 
+        @atomic ∂y∂w_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂wₖ[2])
+        @atomic ∂y∂h_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂hₖ[2])
+        @atomic ∂y∂d_tangent[i, k]           += tangent[1][i,j] * Base.ifelse(isoutside, 0, ∂y∂dₖ[2])
+        @atomic ∂LogJac∂w_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂wₖ[2])
+        @atomic ∂LogJac∂h_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂hₖ[2])
+        @atomic ∂LogJac∂d_tangent[i, k]      += tangent[2][1,j] * Base.ifelse(isoutside, 0, ∂LogJac∂dₖ[2])
     end
 end
 
@@ -270,7 +356,6 @@ function ChainRulesCore.rrule(
     pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
 
     return (y, LogJac), pullback
-
 end
 
 function eval_forward_spline_params(
@@ -296,24 +381,13 @@ function eval_forward_spline_params(
     LogJac = log(abs(nom_4))-2*log(abs(denom))
 
     return y, LogJac
-
 end
 
 function eval_forward_spline_params_with_grad(
     wₖ::M0, wₖ₊₁::M0, 
     hₖ::M1, hₖ₊₁::M1, 
     dₖ::M2, dₖ₊₁::M2, 
-    x::M3, K::Integer, k::Integer) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real}
-      
-    T = promote_type(M0, M1, M2, M3)
-
-    ∂y∂w = zeros(T,K+1)
-    ∂y∂h = zeros(T,K+1)
-    ∂y∂d = zeros(T,K+1)
-
-    ∂LogJac∂w = zeros(T,K+1)
-    ∂LogJac∂h = zeros(T,K+1)
-    ∂LogJac∂d = zeros(T,K+1)
+    x::M3) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real}
 
     Δy = hₖ₊₁ - hₖ
     Δx = wₖ₊₁ - wₖ
@@ -365,24 +439,15 @@ function eval_forward_spline_params_with_grad(
     ∂y∂dₖ₊₁ = -(nom_2/denom^2) * ξ*(1-ξ)
     ∂LogJac∂dₖ₊₁ = (1/nom_4)*sk^2*ξ^2 - (2/denom)*ξ*(1-ξ)
 
-    ∂y∂w[k+1] = ∂y∂wₖ₊₁
-    ∂y∂h[k+1] = ∂y∂hₖ₊₁     
-    ∂y∂d[k+1] = ∂y∂dₖ₊₁
-    
-    ∂y∂w[k] = ∂y∂wₖ
-    ∂y∂h[k] = ∂y∂hₖ
-    ∂y∂d[k] = ∂y∂dₖ
+    ∂y∂w = (∂y∂wₖ, ∂y∂wₖ₊₁)
+    ∂y∂h = (∂y∂hₖ, ∂y∂hₖ₊₁)
+    ∂y∂d = (∂y∂dₖ, ∂y∂dₖ₊₁)
 
-    ∂LogJac∂w[k+1] = ∂LogJac∂wₖ₊₁
-    ∂LogJac∂h[k+1] = ∂LogJac∂hₖ₊₁
-    ∂LogJac∂d[k+1] = ∂LogJac∂dₖ₊₁
+    ∂LogJac∂w = (∂LogJac∂wₖ, ∂LogJac∂wₖ₊₁)
+    ∂LogJac∂h = (∂LogJac∂hₖ, ∂LogJac∂hₖ₊₁)
+    ∂LogJac∂d = (∂LogJac∂dₖ, ∂LogJac∂dₖ₊₁)
 
-    ∂LogJac∂w[k] = ∂LogJac∂wₖ
-    ∂LogJac∂h[k] = ∂LogJac∂hₖ
-    ∂LogJac∂d[k] = ∂LogJac∂dₖ
-
-    return y, LogJac, ∂y∂w[2:end-1], ∂y∂h[2:end-1], ∂y∂d[2:end-2], ∂LogJac∂w[2:end-1], ∂LogJac∂h[2:end-1], ∂LogJac∂d[2:end-2]
-
+    return y, LogJac, ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
 
 # Transformation backward: 
@@ -392,9 +457,9 @@ function spline_backward(trafo::RationalQuadSplineInv, x::AbstractMatrix{<:Real}
     @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1)  >= 1
     @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1)  >= 2
 
-    w = cumsum_with_jac_mat(softmax_with_jac_mat(trafo.widths))
-    h = cumsum_with_jac_mat(softmax_with_jac_mat(trafo.heights))
-    d = softplus_with_jac_mat(trafo.derivatives)
+    w = _cumsum(_softmax(trafo.widths))
+    h = _cumsum(_softmax(trafo.heights))
+    d = _softplus(trafo.derivatives)
 
     return spline_backward(x, w, h, d)
 end
@@ -427,15 +492,17 @@ function spline_backward(
     append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
+    LogJac_tmp = zeros(T, ndims, nsmpls)
     LogJac = zeros(T, 1, nsmpls)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
     kernel! = spline_backward_kernel!(device, n)
 
-    ev = kernel!(x, y, LogJac, w, h, d, ndrange=size(x))
+    ev = kernel!(x, y, LogJac_tmp, w, h, d, ndrange=size(x))
 
     wait(ev)
+    sum!(LogJac, LogJac_tmp)
 
     return y, LogJac
 end
@@ -443,7 +510,7 @@ end
 @kernel function spline_backward_kernel!(
         x::AbstractMatrix{M0},
         y::AbstractMatrix{M1},
-        LogJac::AbstractMatrix{M2},
+        LogJac_tmp::AbstractMatrix{M2},
         w::AbstractMatrix{M3},
         h::AbstractMatrix{M4},
         d::AbstractMatrix{M5}
@@ -464,9 +531,8 @@ end
     x_tmp = Base.ifelse(isoutside, h[i,k], x[i,j]) # Simplifies unnecessary calculations
     (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
-    @atomic y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
-    @atomic LogJac[1, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
-
+    y[i,j] = Base.ifelse(isoutside, x[i,j], yᵢⱼ) 
+    LogJac_tmp[i, j] += Base.ifelse(isoutside, zero(typeof(LogJacᵢⱼ)), LogJacᵢⱼ)
 end
 
 function eval_backward_spline_params(
@@ -503,7 +569,7 @@ end
 
 # Utils: 
 
-function softmax_with_jac(x::AbstractVector)
+function _softmax(x::AbstractVector)
 
     exp_x = exp.(x)
     sum_exp_x = sum(exp_x)
@@ -511,30 +577,30 @@ function softmax_with_jac(x::AbstractVector)
     return exp_x ./ sum_exp_x 
 end
 
-function softmax_with_jac_mat(x::AbstractMatrix)
+function _softmax(x::AbstractMatrix)
 
-    val = cat([softmax_with_jac(i) for i in eachrow(x)]..., dims=2)'
+    val = cat([_softmax(i) for i in eachrow(x)]..., dims=2)'
 
     return val 
 end
 
-function cumsum_with_jac(x::AbstractVector; B = 5)
+function _cumsum(x::AbstractVector; B = 5)
     return 2 .* B .* cumsum(x) .- B 
 end
 
-function cumsum_with_jac_mat(x::AbstractMatrix)
+function _cumsum(x::AbstractMatrix)
 
-    return cat([cumsum_with_jac(i) for i in eachrow(x)]..., dims=2)'
+    return cat([_cumsum(i) for i in eachrow(x)]..., dims=2)'
 end
 
-function softplus_with_jac(x::AbstractVector)
+function _softplus(x::AbstractVector)
 
     return log.(exp.(x) .+ 1) 
 end
 
-function softplus_with_jac_mat(x::AbstractMatrix)
+function _softplus(x::AbstractMatrix)
 
-    val = cat([softplus_with_jac(i) for i in eachrow(x)]..., dims=2)'
+    val = cat([_softplus(i) for i in eachrow(x)]..., dims=2)'
 
     return val
 end

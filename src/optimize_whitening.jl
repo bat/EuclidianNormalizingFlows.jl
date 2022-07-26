@@ -27,7 +27,8 @@ function optimize_whitening(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
     optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
-    negll_history = Vector{Float64}()
+    negll_history = Vector{Float64}(),
+    shuffle_samples::Bool = false
 )
     batchsize = round(Int, length(smpls) / nbatches)
     batches = collect(Iterators.partition(smpls, batchsize))
@@ -40,6 +41,10 @@ function optimize_whitening(
             negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
+        end
+        if shuffle_samples
+            shuffled_smpls = shuffle(smpls)
+            batches = collect(Iterators.partition(shuffled_smpls, batchsize))
         end
     end
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
