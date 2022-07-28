@@ -1,77 +1,104 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 # The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
 
-struct RationalQuadSpline <: Function
+struct TrainableRQSpline <: Function
     widths::AbstractMatrix{<:Real}
     heights::AbstractMatrix{<:Real}
     derivatives::AbstractMatrix{<:Real}
 end
 
-export RationalQuadSpline
-@functor RationalQuadSpline
+export TrainableRQSpline
+@functor TrainableRQSpline
 
-struct RationalQuadSplineInv <: Function
+struct RQSpline <: Function
     widths::AbstractMatrix{<:Real}
     heights::AbstractMatrix{<:Real}
     derivatives::AbstractMatrix{<:Real}
 end
 
-@functor RationalQuadSplineInv
-export RationalQuadSplineInv
+export RQSpline
+@functor RQSpline
+
+struct TrainableRQSplineInv <: Function
+    widths::AbstractMatrix{<:Real}
+    heights::AbstractMatrix{<:Real}
+    derivatives::AbstractMatrix{<:Real}
+end
+
+@functor TrainableRQSplineInv
+export TrainableRQSplineInv
+
+struct RQSplineInv <: Function
+    widths::AbstractMatrix{<:Real}
+    heights::AbstractMatrix{<:Real}
+    derivatives::AbstractMatrix{<:Real}
+end
+
+@functor RQSplineInv
+export RQSplineInv
 
 
-Base.:(==)(a::RationalQuadSpline, b::RationalQuadSpline) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
+Base.:(==)(a::TrainableRQSpline, b::TrainableRQSpline) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
 
-Base.isequal(a::RationalQuadSpline, b::RationalQuadSpline) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
+Base.isequal(a::TrainableRQSpline, b::TrainableRQSpline) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
 
-Base.hash(x::RationalQuadSpline, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:RationalQuadSpline, hash(:EuclidianNormalizingFlows, h)))))
+Base.hash(x::TrainableRQSpline, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:TrainableRQSpline, hash(:EuclidianNormalizingFlows, h)))))
 
-(f::RationalQuadSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
+(f::TrainableRQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
 
 function ChangesOfVariables.with_logabsdet_jacobian(
-    f::RationalQuadSpline,
+    f::TrainableRQSpline,
     x::AbstractMatrix{<:Real}
 )
     return spline_forward(f, x)
 end
 
-function InverseFunctions.inverse(f::RationalQuadSpline)
-    return RationalQuadSplineInv(f.widths, f.heights, f.derivatives)
+function InverseFunctions.inverse(f::TrainableRQSpline)
+    return TrainableRQSplineInv(f.widths, f.heights, f.derivatives)
 end
 
-Base.:(==)(a::RationalQuadSplineInv, b::RationalQuadSplineInv) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
+Base.:(==)(a::TrainableRQSplineInv, b::TrainableRQSplineInv) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
 
-Base.isequal(a::RationalQuadSplineInv, b::RationalQuadSplineInv) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
+Base.isequal(a::TrainableRQSplineInv, b::TrainableRQSplineInv) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
 
-Base.hash(x::RationalQuadSplineInv, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:RationalQuadSplineInv, hash(:EuclidianNormalizingFlows, h)))))
+Base.hash(x::TrainableRQSplineInv, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:TrainableRQSplineInv, hash(:EuclidianNormalizingFlows, h)))))
 
-(f::RationalQuadSplineInv)(x::AbstractMatrix{<:Real}) = spline_backward(f, x)[1]
+(f::TrainableRQSplineInv)(x::AbstractMatrix{<:Real}) = spline_backward(f, x)[1]
 
 function ChangesOfVariables.with_logabsdet_jacobian(
-    f::RationalQuadSplineInv,
+    f::TrainableRQSplineInv,
     x::AbstractMatrix{<:Real}
 )
     return spline_backward(f, x)
 end
 
-function InverseFunctions.inverse(f::RationalQuadSplineInv)
-    return RationalQuadSpline(f.widths, f.heights, f.derivatives)
+function InverseFunctions.inverse(f::TrainableRQSplineInv)
+    return TrainableRQSpline(f.widths, f.heights, f.derivatives)
 end
 
 # Transformation forward: 
 
-function spline_forward(trafo::RationalQuadSpline, x::AbstractMatrix{<:Real})
-    
-    nsmpls = size(x, 2)
+function spline_forward(trafo::TrainableRQSpline, x::AbstractMatrix{<:Real}; B=5.)
 
     @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1) >= 1
     @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1) >= 2
+
+    ndims = size(x, 1)
 
     w = _cumsum(_softmax(trafo.widths))
     h = _cumsum(_softmax(trafo.heights))
     d = _softplus(trafo.derivatives)
 
-    return spline_forward(x, w, h, d, w, h, d)
+    w = hcat(repeat([-B,], ndims,1), w)
+    h = hcat(repeat([-B,], ndims,1), h)
+    d = hcat(repeat([1,], ndims,1), d)
+    d = hcat(d, repeat([1,], ndims,1))
+
+    return spline_forward(RQSpline(w,h,d), x)
+end
+
+function spline_forward(trafo::RQSpline, x::AbstractMatrix{<:Real})
+    return spline_forward(x, trafo.widths, trafo.heights, trafo.derivatives, trafo.widths, trafo.heights, trafo.derivatives)
 end
 
 function spline_forward(
@@ -81,42 +108,26 @@ function spline_forward(
     d::AbstractArray{M3},
     w_logJac::AbstractArray{M4},
     h_logJac::AbstractArray{M5},
-    d_logJac::AbstractArray{M6};
-    B=5.
+    d_logJac::AbstractArray{M6}
 ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
     T = promote_type(M0, M1, M2, M3, M4, M5, M6)
 
     ndims = size(x, 1)
     nsmpls = size(x, 2)
-    
-    B = fill(B, size(w, 1))
-    one = ones(size(d, 1))
-
-    # add boundary conditions:
-    w = convert(ElasticArray{eltype(w)}, w)
-    h = convert(ElasticArray{eltype(h)}, h)
-    d = convert(ElasticArray{eltype(d)}, d)
-
-    prepend!(w, -B)
-    prepend!(h, -B)
-    prepend!(d, one)
-    append!(d, one)
 
     y = zeros(T, ndims, nsmpls)
-    LogJac_tmp = zeros(T, ndims, nsmpls)
-    LogJac = zeros(T, 1, nsmpls)
+    logJac = zeros(T, ndims, nsmpls)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
     kernel! = spline_forward_kernel!(device, n)
 
-    ev = kernel!(x, y, LogJac_tmp, w, h, d, ndrange=size(x))
+    ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
 
     wait(ev)
-    sum!(LogJac, LogJac_tmp)
 
-    return y, LogJac
+    return y, sum(logJac, dims=1)
 end
 
 
@@ -129,46 +140,31 @@ function spline_forward_pullback(
         h_logJac::AbstractArray{M5},
         d_logJac::AbstractArray{M6},
         tangent::ChainRulesCore.Tangent;
-        B=5.
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
     T = promote_type(M0, M1, M2, M3, M4, M5, M6)
 
     ndims = size(x, 1)
     nsmpls = size(x, 2)
-    nparams = size(w, 2)
-
-    B = fill(B, size(w, 1))
-    one = ones(size(d, 1))
-
-    # add boundary conditions:
-    w = convert(ElasticArray{eltype(w)}, w)
-    h = convert(ElasticArray{eltype(h)}, h)
-    d = convert(ElasticArray{eltype(d)}, d)
-
-    prepend!(w, -B)
-    prepend!(h, -B)
-    prepend!(d, one)
-    append!(d, one)
+    nparams = size(w, 2) 
 
     y = zeros(T, ndims, nsmpls)
-    LogJac_tmp = zeros(T, ndims, nsmpls)
-    LogJac = zeros(T, 1, nsmpls)
+    logJac = zeros(T, ndims, nsmpls)
 
     ∂y∂w = zeros(T, ndims, nparams)
     ∂y∂h = zeros(T, ndims, nparams)
-    ∂y∂d = zeros(T, ndims, nparams-1)
+    ∂y∂d = zeros(T, ndims, nparams+1)
 
     ∂LogJac∂w = zeros(T, ndims, nparams)
     ∂LogJac∂h = zeros(T, ndims, nparams)
-    ∂LogJac∂d = zeros(T, ndims, nparams-1)
+    ∂LogJac∂d = zeros(T, ndims, nparams+1)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
     kernel! = spline_forward_pullback_kernel!(device, n)
 
     ev = kernel!(
-        x, y, LogJac_tmp, 
+        x, y, logJac, 
         w, h, d,
         ∂y∂w, ∂y∂h, ∂y∂d,
         ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d, 
@@ -177,15 +173,15 @@ function spline_forward_pullback(
         )
 
     wait(ev)
-    sum!(LogJac, LogJac_tmp)
+    logJac = sum(logJac, dims=1)
 
-    return NoTangent(), @thunk(tangent[1] .* exp.(LogJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
+    return NoTangent(), @thunk(tangent[1] .* exp.(logJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
 
 @kernel function spline_forward_kernel!(
     x::AbstractArray,
     y::AbstractArray,
-    LogJac_tmp::AbstractArray,
+    logJac::AbstractArray,
     w::AbstractArray,
     h::AbstractArray,
     d::AbstractArray
@@ -206,14 +202,14 @@ end
     (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
-    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
+    logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 end
 
 
 @kernel function spline_forward_pullback_kernel!(
         x::AbstractArray,
         y::AbstractArray,
-        LogJac_tmp::AbstractArray,
+        logJac::AbstractArray,
         w::AbstractArray,
         h::AbstractArray,
         d::AbstractArray,
@@ -242,27 +238,27 @@ end
     (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
-    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
+    logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 
     left_edge_istrue = (1 < k < K)
     left_edge_ind = Base.ifelse(left_edge_istrue, k-1, one(typeof(k)))
 
-    @atomic ∂y∂w_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂wₖ[1], zero(eltype(∂y∂wₖ)))
-    @atomic ∂y∂h_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂hₖ[1], zero(eltype(∂y∂hₖ)))
-    @atomic ∂y∂d_tangent[i, left_edge_ind]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂dₖ[1], zero(eltype(∂y∂dₖ)))
-    @atomic ∂LogJac∂w_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂wₖ[1], zero(eltype(∂LogJac∂wₖ)))
-    @atomic ∂LogJac∂h_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂hₖ[1], zero(eltype(∂LogJac∂hₖ)))
-    @atomic ∂LogJac∂d_tangent[i, left_edge_ind] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂dₖ[1], zero(eltype(∂LogJac∂dₖ)))
+    @atomic ∂y∂w_tangent[i, left_edge_ind+1]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂wₖ[1], zero(eltype(∂y∂wₖ)))
+    @atomic ∂y∂h_tangent[i, left_edge_ind+1]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂hₖ[1], zero(eltype(∂y∂hₖ)))
+    @atomic ∂y∂d_tangent[i, left_edge_ind+1]      += tangent[1][i,j] * Base.ifelse(isinside * left_edge_istrue, ∂y∂dₖ[1], zero(eltype(∂y∂dₖ)))
+    @atomic ∂LogJac∂w_tangent[i, left_edge_ind+1] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂wₖ[1], zero(eltype(∂LogJac∂wₖ)))
+    @atomic ∂LogJac∂h_tangent[i, left_edge_ind+1] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂hₖ[1], zero(eltype(∂LogJac∂hₖ)))
+    @atomic ∂LogJac∂d_tangent[i, left_edge_ind+1] += tangent[2][1,j] * Base.ifelse(isinside * left_edge_istrue, ∂LogJac∂dₖ[1], zero(eltype(∂LogJac∂dₖ)))
  
     right_edge_istrue = (k < K - 1)
     right_edge_ind = Base.ifelse(right_edge_istrue, k, one(typeof(k)))
 
-    @atomic ∂y∂w_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂wₖ[2], zero(eltype(∂y∂wₖ)))
-    @atomic ∂y∂h_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂hₖ[2], zero(eltype(∂y∂hₖ)))
-    @atomic ∂y∂d_tangent[i, right_edge_ind]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂dₖ[2], zero(eltype(∂y∂dₖ)))
-    @atomic ∂LogJac∂w_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂wₖ[2], zero(eltype(∂LogJac∂wₖ)))
-    @atomic ∂LogJac∂h_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂hₖ[2], zero(eltype(∂LogJac∂hₖ)))
-    @atomic ∂LogJac∂d_tangent[i, right_edge_ind]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂dₖ[2], zero(eltype(∂LogJac∂dₖ)))
+    @atomic ∂y∂w_tangent[i, right_edge_ind+1]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂wₖ[2], zero(eltype(∂y∂wₖ)))
+    @atomic ∂y∂h_tangent[i, right_edge_ind+1]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂hₖ[2], zero(eltype(∂y∂hₖ)))
+    @atomic ∂y∂d_tangent[i, right_edge_ind+1]       += tangent[1][i,j] * Base.ifelse(isinside * right_edge_istrue, ∂y∂dₖ[2], zero(eltype(∂y∂dₖ)))
+    @atomic ∂LogJac∂w_tangent[i, right_edge_ind+1]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂wₖ[2], zero(eltype(∂LogJac∂wₖ)))
+    @atomic ∂LogJac∂h_tangent[i, right_edge_ind+1]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂hₖ[2], zero(eltype(∂LogJac∂hₖ)))
+    @atomic ∂LogJac∂d_tangent[i, right_edge_ind+1]  += tangent[2][1,j] * Base.ifelse(isinside * right_edge_istrue, ∂LogJac∂dₖ[2], zero(eltype(∂LogJac∂dₖ)))
 
 end
 
@@ -278,10 +274,9 @@ function ChainRulesCore.rrule(
 ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
     # To do: Rewrite to avoid repeating calculation. 
-    y, LogJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
+    y, logJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
     pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
-
-    return (y, LogJac), pullback
+    return (y, logJac), pullback
 end
 
 function eval_forward_spline_params(
@@ -304,9 +299,9 @@ function eval_forward_spline_params(
     y = hₖ + nom_2/denom
 
     # LogJacobian
-    LogJac = log(abs(nom_4))-2*log(abs(denom))
+    logJac = log(abs(nom_4))-2*log(abs(denom))
 
-    return y, LogJac
+    return y, logJac
 end
 
 function eval_forward_spline_params_with_grad(
@@ -329,7 +324,7 @@ function eval_forward_spline_params_with_grad(
     y = hₖ + nom_2/denom
 
     # LogJacobian
-    LogJac = log(abs(nom_4))-2*log(abs(denom))
+    logJac = log(abs(nom_4))-2*log(abs(denom))
 
     # Gradient of parameters:
 
@@ -373,21 +368,32 @@ function eval_forward_spline_params_with_grad(
     ∂LogJac∂h = (∂LogJac∂hₖ, ∂LogJac∂hₖ₊₁)
     ∂LogJac∂d = (∂LogJac∂dₖ, ∂LogJac∂dₖ₊₁)
 
-    return y, LogJac, ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
+    return y, logJac, ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
 
 # Transformation backward: 
 
-function spline_backward(trafo::RationalQuadSplineInv, x::AbstractMatrix{<:Real})
+function spline_backward(trafo::TrainableRQSplineInv, x::AbstractMatrix{<:Real};   B = 5.)
 
     @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1)  >= 1
     @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1)  >= 2
+
+    ndims = size(x, 1)
 
     w = _cumsum(_softmax(trafo.widths))
     h = _cumsum(_softmax(trafo.heights))
     d = _softplus(trafo.derivatives)
 
-    return spline_backward(x, w, h, d)
+    w = hcat(repeat([-B,], ndims,1), w)
+    h = hcat(repeat([-B,], ndims,1), h)
+    d = hcat(repeat([1,], ndims,1), d)
+    d = hcat(d, repeat([1,], ndims,1))
+
+    return spline_backward(RQSplineInv(w, h, d), x)
+end
+
+function spline_backward(trafo::RQSplineInv, x::AbstractMatrix{<:Real})
+    return spline_backward(x, trafo.widths, trafo.heights, trafo.derivatives)
 end
 
 
@@ -396,7 +402,6 @@ function spline_backward(
         w::AbstractArray{M1},
         h::AbstractArray{M2},
         d::AbstractArray{M3},
-        B = 5.
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real}
 
     T = promote_type(M0, M1, M2, M3)
@@ -404,39 +409,24 @@ function spline_backward(
     ndims = size(x, 1)
     nsmpls = size(x, 2)
 
-    B = fill(B, size(w, 1))
-    one = ones(size(d, 1))
-
-    # add boundary conditions:
-    w = convert(ElasticArray{eltype(w)}, w)
-    h = convert(ElasticArray{eltype(h)}, h)
-    d = convert(ElasticArray{eltype(d)}, d)
-
-    prepend!(w, -B)
-    prepend!(h, -B)
-    prepend!(d, one)
-    append!(d, one)
-
     y = zeros(T, ndims, nsmpls)
-    LogJac_tmp = zeros(T, ndims, nsmpls)
-    LogJac = zeros(T, 1, nsmpls)
+    logJac = zeros(T, ndims, nsmpls)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : 4
     kernel! = spline_backward_kernel!(device, n)
 
-    ev = kernel!(x, y, LogJac_tmp, w, h, d, ndrange=size(x))
+    ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
 
     wait(ev)
-    sum!(LogJac, LogJac_tmp)
 
-    return y, LogJac
+    return y, sum(logJac, dims=1)
 end
 
 @kernel function spline_backward_kernel!(
         x::AbstractMatrix{M0},
         y::AbstractMatrix{M1},
-        LogJac_tmp::AbstractMatrix{M2},
+        logJac::AbstractMatrix{M2},
         w::AbstractMatrix{M3},
         h::AbstractMatrix{M4},
         d::AbstractMatrix{M5}
@@ -458,7 +448,7 @@ end
     (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
-    LogJac_tmp[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
+    logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 end
 
 function eval_backward_spline_params(
