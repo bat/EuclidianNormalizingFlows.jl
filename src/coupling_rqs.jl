@@ -2,11 +2,18 @@
 
 struct CouplingRQS <: Function
     nns::AbstractArray
+    mask1::AbstractVector
+    mask2::AbstractVector
 end
 
-function CouplingRQS(n_dims::Integer, K::Integer=10, hidden::Integer=20)
+function CouplingRQS(n_dims::Integer,
+                     mask1::AbstractVector,
+                     mask2::AbstractVector,
+                     K::Integer=10, 
+                     hidden::Integer=20
+    )
 
-    return CouplingRQS(_get_nns(n_dims, K, hidden))
+    return CouplingRQS(_get_nns(n_dims, K, hidden), mask1, mask2)
 end
 
 export CouplingRQS
@@ -21,20 +28,21 @@ end
 
 (f::CouplingRQS)(x::AbstractMatrix{<:Real}) = coupling_trafo(f, x)[1]
 
+
+
 function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
 
-    n_dims = size(x,1)
-    d = floor(Int, n_dims/2)
-    θs = get_params(trafo.nns, x[1:d,:])
-
-
+    #n_dims = size(x,1)
+    w,h,d = get_params(trafo.nns, x[trafo.mask1,:])
 
     spline = RQSpline(w, h, d)
 
-    return with_logabsdet_jacobian(spline, x)
+    y, LogJac = with_logabsdet_jacobian(spline, x[trafo.mask2,:])
+
+    return _sort_dimensions(reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2)), y, trafo.mask1), LogJac
 end
 
-export partial_coupling_trafo
+export coupling_trafo
 
 
 

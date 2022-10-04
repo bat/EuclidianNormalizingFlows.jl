@@ -2,18 +2,18 @@
 # The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
 
 struct TrainableRQSpline <: Function
-    widths::AbstractMatrix{<:Real}
-    heights::AbstractMatrix{<:Real}
-    derivatives::AbstractMatrix{<:Real}
+    widths::AbstractArray{<:Real}
+    heights::AbstractArray{<:Real}
+    derivatives::AbstractArray{<:Real}
 end
 
 export TrainableRQSpline
 @functor TrainableRQSpline
 
 struct RQSpline <: Function
-    widths::AbstractMatrix{<:Real}
-    heights::AbstractMatrix{<:Real}
-    derivatives::AbstractMatrix{<:Real}
+    widths::AbstractArray{<:Real}
+    heights::AbstractArray{<:Real}
+    derivatives::AbstractArray{<:Real}
 end
 
 export RQSpline
@@ -48,6 +48,13 @@ Base.hash(x::TrainableRQSpline, h::UInt) = hash(x.widths, hash(x.heights, hash(x
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::TrainableRQSpline,
+    x::AbstractMatrix{<:Real}
+)
+    return spline_forward(f, x)
+end
+
+function ChangesOfVariables.with_logabsdet_jacobian(
+    f::RQSpline,
     x::AbstractMatrix{<:Real}
 )
     return spline_forward(f, x)
@@ -188,18 +195,18 @@ end
 )
     i, j = @index(Global, NTuple)
 
-    K = size(w, 2)
+    K = size(w, 3) - 1
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
+    k1 = searchsortedfirst_impl(w[i,j,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is inside of range
     isinside = (k1 < K) && (k1 > 0)
     k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isinside, x[i,j], w[i,k]) # Simplifies calculations
-    (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
+    x_tmp = Base.ifelse(isinside, x[i,j], w[i,j,k]) # Simplifies calculations
+    (yᵢⱼ, LogJacᵢⱼ) = eval_forward_spline_params(w[i,j,k], w[i,j,k+1], h[i,j,k], h[i,j,k+1], d[i,j,k], d[i,j,k+1], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
     logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
@@ -224,18 +231,18 @@ end
 
     i, j = @index(Global, NTuple)
 
-    K = size(w, 2)
+    K = size(w, 3) - 1
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w[i,:], x[i,j]) - 1
+    k1 = searchsortedfirst_impl(w[i,j,:], x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is inside of range
     isinside = (k1 < K) && (k1 > 0)
     k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isinside, x[i,j], w[i,k]) # Simplifies calculations
-    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
+    x_tmp = Base.ifelse(isinside, x[i,j], w[i,j,k]) # Simplifies calculations
+    (yᵢⱼ, LogJacᵢⱼ, ∂y∂wₖ, ∂y∂hₖ, ∂y∂dₖ, ∂LogJac∂wₖ, ∂LogJac∂hₖ, ∂LogJac∂dₖ) = eval_forward_spline_params_with_grad(w[i,j,k], w[i,j,k+1], h[i,j,k], h[i,j,k+1], d[i,j,k], d[i,j,k+1], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
     logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))

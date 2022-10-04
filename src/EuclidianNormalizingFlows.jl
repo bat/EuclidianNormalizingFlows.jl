@@ -22,6 +22,7 @@ using DocStringExtensions
 using ElasticArrays
 using Flux
 using ForwardDiffPullbacks
+using FunctionChains
 using Functors
 using InverseFunctions
 using Optim
@@ -40,6 +41,7 @@ using Distributions: log2π
 
 import InverseFunctions.inverse
 import ChainRulesCore.rrule
+import ChainRulesCore.ignore_derivatives
 import ChangesOfVariables.with_logabsdet_jacobian
 
 
