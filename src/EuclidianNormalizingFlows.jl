@@ -20,6 +20,7 @@ using ChangesOfVariables
 using Distributions
 using DocStringExtensions
 using ElasticArrays
+using Flux
 using ForwardDiffPullbacks
 using Functors
 using InverseFunctions
@@ -49,5 +50,7 @@ include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
 include("spline_trafo.jl")
+include("coupling_rqs.jl")
+include("utils.jl")
 
 end # module
