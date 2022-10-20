@@ -1,19 +1,10 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 
 struct CouplingRQS <: Function
-    nns::AbstractArray
+    nn1::Chain
+    nn2::Chain
     mask1::AbstractVector
     mask2::AbstractVector
-end
-
-function CouplingRQS(n_dims::Integer,
-                     mask1::AbstractVector,
-                     mask2::AbstractVector,
-                     K::Integer=10, 
-                     hidden::Integer=20
-    )
-
-    return CouplingRQS(_get_nns(n_dims, K, hidden), mask1, mask2)
 end
 
 export CouplingRQS
@@ -32,19 +23,29 @@ end
 
 function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
 
-    #n_dims = size(x,1)
-    w,h,d = get_params(trafo.nns, x[trafo.mask1,:])
+    x₁ = reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2))
+    x₂ = reshape(x[trafo.mask2,:], length(trafo.mask2), size(x,2))
 
-    spline = RQSpline(w, h, d)
+    y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, x₁, x₂)
+    y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y₁)
 
-    y, LogJac = with_logabsdet_jacobian(spline, x[trafo.mask2,:])
-
-    return _sort_dimensions(reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2)), y, trafo.mask1), LogJac
+    return _sort_dimensions(y₁,y₂,trafo.mask1), LogJac₁ + LogJac₂
 end
 
 export coupling_trafo
 
+function partial_coupling_trafo(nn::Chain, 
+                                x₁::AbstractMatrix{<:Real}, 
+                                x₂::AbstractMatrix{<:Real}
+    )
+    θ = nn(x₂)
+    w, h, d = get_params(θ, size(x₁,1))
+    spline = RQSpline(w, h, d)
 
+    return with_logabsdet_jacobian(spline, x₁)
+end
+
+export partial_coupling_trafo
 
 
 #=
