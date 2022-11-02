@@ -49,4 +49,47 @@ function optimize_whitening(
     end
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
+
+function optimize_whitening_stationary(
+    rand_dist::Function, 
+    initial_trafo::Function, optimizer;
+    nbatches::Integer = 2, batchsize::Integer = 2, max_nepochs::Integer = 2, stationary_p_val::Real = 1e-3,
+    optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
+    negll_history = Vector{Float64}(), wanna_use_GPU::Bool = false
+)
+    
+    trafo = deepcopy(initial_trafo)
+    state = deepcopy(optstate)
+    negll_hist = Vector{Float64}()
+    stationary_flag = true
+    nepochs = 0
+    
+    ### WARMUP ###
+    X = rand_dist(2)
+    mvnormal_negll_trafograd(trafo, X)
+    ##############
+    
+    while stationary_flag && nepochs < max_nepochs
+        @time for i in 1:nbatches
+            X = rand_dist(batchsize)
+            negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            state, trafo = Optimisers.update(state, trafo, d_trafo)
+            push!(negll_hist, negll)
+        end
+        nepochs += 1
+        p_val = pvalue(ADFTest(cpu(negll_hist)[end-nbatches+1:end], :constant, 1))
+        if !(0 <= p_val <= 1)
+            println("p_val is $(p_val)")
+            println(cpu(negll_hist)[end-nbatches+1:end])
+            break
+        end
+        if p_val < stationary_p_val
+            stationary_flag = false
+        end
+        println("Done epoch $(nepochs), p_val = $(p_val)")
+    end
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
+end
+
 export optimize_trafo
+

@@ -128,8 +128,8 @@ function spline_forward(
     n = device isa GPU ? 256 : Threads.nthreads()
     kernel! = spline_forward_kernel!(device, n)
 
-    y = device isa GPU ? CUDA.zeros(T, ndims, nsmpls) : zeros(T, ndims, nsmpls)
-    logJac = device isa GPU ? CUDA.zeros(T, ndims, nsmpls) : zeros(T, ndims, nsmpls)
+    y = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+    logJac = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
 
     ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
 
@@ -162,16 +162,16 @@ function spline_forward_pullback(
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : Threads.nthreads()
 
-    y = device isa GPU ? CUDA.zeros(T, ndims, nsmpls) : zeros(T, ndims, nsmpls)
-    logJac = device isa GPU ? CUDA.zeros(T, ndims, nsmpls) : zeros(T, ndims, nsmpls)
+    y = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+    logJac = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
 
-    ∂y∂w = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
-    ∂y∂h = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
-    ∂y∂d = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
+    ∂y∂w = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂y∂h = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂y∂d = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
 
-    ∂LogJac∂w = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
-    ∂LogJac∂h = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
-    ∂LogJac∂d = device isa GPU ? CUDA.zeros(T, nparams, ndims, nsmpls) : zeros(T, nparams, ndims, nsmpls)
+    ∂LogJac∂w = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂LogJac∂h = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂LogJac∂d = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
 
     kernel! = spline_forward_pullback_kernel!(device, n)
 
