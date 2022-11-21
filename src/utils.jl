@@ -23,6 +23,31 @@ end
 
 export get_flow
 
+function get_indie_flow(n_dims::Integer, N::Integer, device, K::Integer=10, hidden::Integer=20)
+    d = floor(Int, n_dims/2) 
+    i = 1
+    all_dims = Integer[1:n_dims...]
+    trafos = Function[]
+    
+    while d <= n_dims
+        mask1 = [i:d...]
+        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
+        mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
+        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
+        
+        params = fill(1, (3K-1)*(n_dims-d), N) 
+
+        d+=1
+        i+=1
+
+        push!(trafos, PRQS(nn2, mask1, mask2, params))
+    end
+
+    return fchain(trafos)
+end 
+
+export get_indie_flow
+
 function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device)
     d = floor(Int, n_dims/2)
 

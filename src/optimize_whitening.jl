@@ -37,7 +37,7 @@ function optimize_whitening(
     negll_hist = Vector{Float64}()
     for i in 1:nepochs
         for batch in batches
-            X = flatview(batch)
+            X = gpu(flatview(batch))
             negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
@@ -49,6 +49,60 @@ function optimize_whitening(
     end
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
+export optimize_whitening
+
+function optimize_whitening_annealing(
+    smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, 
+    nbatches::Integer, 
+    nepochs::Integer, 
+    learn_start::Real, 
+    learn_max::Real, 
+    learn_end::Real, 
+    phase_durations::AbstractVector;
+    negll_history = Vector{Float64}()
+)
+    batchsize = round(Int, length(smpls) / nbatches)
+    trafo = deepcopy(initial_trafo)
+    negll_hist = Vector{Float64}()
+    state = nothing 
+
+    niterations = nepochs * nbatches
+
+    phase_durations *= niterations 
+    phase_durations = round.(Int, phase_durations)
+
+    phase1 = fill(learn_start, phase_durations[1])
+    phase2 = [learn_start+i/phase_durations[2]*(learn_max-learn_start) for i in 1:phase_durations[2]]
+    phase3 = fill((learn_max-learn_start), phase_durations[3])
+    phase4 = [(learn_max-learn_start)-i/phase_durations[4]*learn_end for i in 1:phase_durations[4]]
+
+    learning_rates = vcat(phase1,phase2,phase3,phase4)
+
+    for i in 1:nepochs
+        if i == 1 
+            state = Optimisers.setup(Optimisers.Adam(learn_start), trafo)
+        else
+            state = Optimisers.adjust(state, learning_rates[i])
+        end
+
+        #println("Training in epoch $i now.")
+
+
+        shuffled_smpls = shuffle(smpls)
+        batches = collect(Iterators.partition(shuffled_smpls, batchsize))
+        for batch in batches 
+            X = gpu(flatview(batch))
+            negll, d_trafo = EuclidianNormalizingFlows.mvnormal_negll_trafograd(trafo, X)
+            state, trafo = Optimisers.update(state, trafo, d_trafo)
+            push!(negll_hist, negll)
+        end
+    
+    end
+
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
+end
+export optimize_whitening_annealing
+
 
 function optimize_whitening_stationary(
     rand_dist::Function, 
